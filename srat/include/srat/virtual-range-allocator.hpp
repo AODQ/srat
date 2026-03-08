@@ -42,6 +42,9 @@ struct VirtualRangeAllocator
 	// free a previously allocated range of elements
 	void free(u64 const handle);
 
+	u64 handleCount() const;
+	u64 handleCapacity() const;
+
 	// reset allocator to initial data, freeing all virtual memory ranges
 	void clear();
 

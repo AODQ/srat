@@ -295,7 +295,11 @@ srat::VirtualRangeBlock srat::VirtualRangeAllocator::allocate(
 				);
 			}
 			// invalidate free block handle
-			generation_inc(freeBlock.generation);
+			if (srat::generation_alive(freeBlock.generation)) {
+				SRAT_ASSERT(freeBlock.allocated == false);
+				srat::generation_inc(freeBlock.generation);
+				SRAT_ASSERT(self.isDead(freeIndex));
+			}
 			freeBlock.elementOffset = 0;
 			freeBlock.elementCount = 0;
 			freeBlock.allocated = false;
@@ -382,7 +386,11 @@ void srat::VirtualRangeAllocator::free(u64 const handle)
 				currentBlock.elementCount += nextBlock.elementCount;
 				currentBlock.nextFreeIndex = nextBlock.nextFreeIndex;
 				// invalidate the next block's handle by incrementing its generation
-				generation_inc(nextBlock.generation);
+				if (srat::generation_alive(nextBlock.generation)) {
+					SRAT_ASSERT(nextBlock.allocated == false);
+					srat::generation_inc(nextBlock.generation);
+					SRAT_ASSERT(self.isDead(nextIndex));
+				}
 				nextBlock.elementOffset = 0;
 				nextBlock.elementCount = 0;
 				nextBlock.nextFreeIndex = skFreeListEnd;

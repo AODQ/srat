@@ -32,7 +32,7 @@ void srat::HandlePool<Handle, InternalResource>::deleteInternal() {
 	for (u32 i = 0; i < maxHandles; ++i) {
 		if (allocator.isIndexAlive(i)) {
 			u64 const elementOffset = allocator.elementOffset(i);
-			SRAT_ASSERT(elementOffset < UINT32_MAX);
+			SRAT_ASSERT(elementOffset < maxHandles);
 			resourceAllocations[elementOffset].~InternalResource();
 		}
 	}
@@ -78,7 +78,7 @@ Handle srat::HandlePool<Handle, InternalResource>::allocate(
 		allocator.allocate({.elementCount = 1})
 	);
 	auto const elementOffset = handleId.elementOffset;
-	SRAT_ASSERT(elementOffset < UINT32_MAX);
+	SRAT_ASSERT(elementOffset < maxHandles);
 	if (!handleId.valid(allocator)) {
 		return Handle{0}; // invalid handle
 		
@@ -95,8 +95,7 @@ Handle srat::HandlePool<Handle, InternalResource>::allocate(
 		allocator.allocate({.elementCount = 1})
 	);
 	auto const elementOffset = handleId.elementOffset;
-	printf("element offset: %u\n", (u32)elementOffset);
-	SRAT_ASSERT(elementOffset < UINT32_MAX);
+	SRAT_ASSERT(elementOffset < maxHandles);
 	if (!handleId.valid(allocator)) {
 		return Handle{0}; // invalid handle
 	}
@@ -109,11 +108,12 @@ template <typename Handle, typename InternalResource>
 void srat::HandlePool<Handle, InternalResource>::free(Handle const & handle)
 {
 	if (!valid(handle)) { return; }
-	u64 const index = allocator.elementOffset(srat::handle_index(handle.id));
+	// free the resource
+	u64 const offset = allocator.elementOffset(srat::handle_index(handle.id));
+	SRAT_ASSERT(offset < maxHandles);
+	resourceAllocations[offset].~InternalResource();
 	// free the handle from virtual range allocator
 	allocator.free(handle.id);
-	// free the resource
-	resourceAllocations[index].~InternalResource();
 }
 
 template <typename Handle, typename InternalResource>
@@ -121,9 +121,11 @@ bool srat::HandlePool<Handle, InternalResource>::valid(
 	Handle const & handle
 ) const {
 	if (handle.id == 0) { return false; }
-	u32 const index = srat::handle_index(handle.id);
-	if (index >= maxHandles) { return false; }
-	return allocator.isHandleAlive(handle.id);
+	if (!allocator.isHandleAlive(handle.id)) { return false; }
+	SRAT_ASSERT(
+		allocator.elementOffset(srat::handle_index(handle.id)) < maxHandles
+	);
+	return true;
 }
 
 template <typename Handle, typename InternalResource>
@@ -131,6 +133,7 @@ InternalResource * srat::HandlePool<Handle, InternalResource>::get(
 	Handle const & handle
 ) {
 	if (!valid(handle)) { return nullptr; }
-	u32 const index = allocator.elementOffset(srat::handle_index(handle.id));
-	return &resourceAllocations[index];
+	u32 const offset = allocator.elementOffset(srat::handle_index(handle.id));
+	SRAT_ASSERT(offset < maxHandles);
+	return &resourceAllocations[offset];
 }
