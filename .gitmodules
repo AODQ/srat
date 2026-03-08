@@ -1,0 +1,6 @@
+[submodule "external/doctest"]
+	path = external/doctest
+	url = https://github.com/doctest/doctest
+[submodule "external/thread-pool"]
+	path = external/thread-pool
+	url = https://github.com/bshoshany/thread-pool

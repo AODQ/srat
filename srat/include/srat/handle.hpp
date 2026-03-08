@@ -1,0 +1,85 @@
+#pragma once
+
+#include "types.hpp"
+#include "virtual-range-allocator.hpp"
+
+#include <type_traits>
+
+// handle system for internal resource management
+
+namespace srat
+{
+
+// pool of handles to manage resources
+template <typename Handle, typename InternalResource>
+struct HandlePool
+{
+	static_assert(
+		std::is_same<decltype(Handle::id), u64>::value,
+		"handle must have an id of type uint64_t"
+	);
+
+	static HandlePool<Handle, InternalResource> create(u64 const maxHandles);
+	~HandlePool();
+	HandlePool(HandlePool const &) = delete;
+	HandlePool & operator=(HandlePool const &) = delete;
+	HandlePool(HandlePool &&);
+	HandlePool & operator=(HandlePool &&);
+
+	Handle allocate(InternalResource const & resource);
+	Handle allocate(InternalResource && resource);
+	void free(Handle const & handle);
+	bool valid(Handle const & handle) const;
+	InternalResource * get(Handle const & handle);
+
+	bool empty() const { return allocator.empty(); }
+
+private:
+	HandlePool(
+		VirtualRangeAllocator && allocator,
+		InternalResource * resourceAllocations,
+		u32 const maxHandles
+	)
+		: allocator(std::move(allocator))
+		, maxHandles(maxHandles)
+		, resourceAllocations(resourceAllocations)
+	{}
+
+	void deleteInternal();
+
+	VirtualRangeAllocator allocator;
+	u32 maxHandles;
+	InternalResource * resourceAllocations;
+
+	// this is the handle pool gen, there is also a per-handle gen as part of
+	//   its virtual range block
+};
+
+inline u64 handle_make(u32 index, u32 generation) {
+	return (static_cast<u64>(generation) << 32) | index;
+}
+inline u32 handle_index(u64 const handle_id) { return handle_id & 0xFFFFFFFF; }
+inline void handle_index_set(u64 & handle_id, u32 index) {
+	handle_id = (handle_id & 0xFFFFFFFF00000000) | index;
+}
+inline void handle_index_clear(u64 & handle_id) {
+	handle_id &= 0xFFFFFFFF00000000;
+}
+inline u32 handle_generation(u64 const handle_id) {
+	return (handle_id >> 32) & 0xFFFFFFFF;
+}
+inline void handle_generation_inc(u64 & handle_id) {
+	handle_id += (1ull << 32);
+}
+inline void handle_generation_clear(u64 & handle_id) {
+	handle_id &= 0x00000000FFFFFFFF;
+}
+inline u32 generation_inc(u32 & generation) {
+	generation += 1;
+	if (generation == 0) { generation = 1; }
+	return generation;
+}
+
+} // namespace srat
+
+#include "handle.inl"
