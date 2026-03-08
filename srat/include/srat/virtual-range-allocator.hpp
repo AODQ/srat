@@ -48,7 +48,10 @@ struct VirtualRangeAllocator
 	// create a new virtual range allocator
 	static VirtualRangeAllocator create(VirtualRangeCreateParams const & params);
 
+	// this returns if the index has data in its slot
 	bool isIndexAlive(u32 blockIndex) const;
+	// this returns if the handle is alive
+	bool isHandleAlive(u64 const handle) const;
 	u64 elementOffset(u32 blockIndex) const;
 
 	// check if the allocator has no free blocks available

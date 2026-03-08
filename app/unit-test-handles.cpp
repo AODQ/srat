@@ -59,25 +59,25 @@ TEST_CASE("handle pool stale handle after reallocation") {
 	CHECK(handlePool.empty());
 }
 
-// TEST_CASE("handle pool allocate until full") {
-// 	static constexpr u64 kMax = 16;
-// 	auto handlePool = srat::HandlePool<TestHandle, i32>::create(kMax);
-// 	std::vector<TestHandle> handles;
-// 	for (u64 i = 0; i < kMax; ++i) {
-// 		TestHandle h = handlePool.allocate((i32)i);
-// 		CHECK(handlePool.valid(h));
-// 		handles.emplace_back(h);
-// 	}
-// 	// pool is full — next allocation should fail
-// 	TestHandle overflow = handlePool.allocate(999);
-// 	CHECK_FALSE(handlePool.valid(overflow));
-// 	CHECK(overflow.id == 0);
-// 	// free all and verify empty
-// 	for (auto & h : handles) {
-// 		handlePool.free(h);
-// 	}
-// 	CHECK(handlePool.empty());
-// }
+TEST_CASE("handle pool allocate until full") {
+	static constexpr u64 kMax = 16;
+	auto handlePool = srat::HandlePool<TestHandle, i32>::create(kMax);
+	std::vector<TestHandle> handles;
+	for (u64 i = 0; i < kMax; ++i) {
+		TestHandle h = handlePool.allocate((i32)i);
+		CHECK(handlePool.valid(h));
+		handles.emplace_back(h);
+	}
+	// pool is full — next allocation should fail
+	TestHandle overflow = handlePool.allocate(999);
+	CHECK_FALSE(handlePool.valid(overflow));
+	CHECK(overflow.id == 0);
+	// free all and verify empty
+	for (auto & h : handles) {
+		handlePool.free(h);
+	}
+	CHECK(handlePool.empty());
+}
 
 // TEST_CASE("handle pool move") {
 // 	auto pool1 = srat::HandlePool<TestHandle, i32>::create(128);

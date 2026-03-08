@@ -169,7 +169,20 @@ srat::VirtualRangeAllocator srat::VirtualRangeAllocator::create(
 bool srat::VirtualRangeAllocator::isIndexAlive(u32 blockIndex) const
 {
 	VirtualRangeAllocatorData const & self = AllocatorData(*this, const);
+	SRAT_ASSERT(blockIndex < self.maxBlockAllocations);
 	return self.isAlive(blockIndex);
+}
+
+bool srat::VirtualRangeAllocator::isHandleAlive(u64 const blockHandle) const
+{
+	VirtualRangeAllocatorData const & self = AllocatorData(*this, const);
+	// recreate the VirtualRangeBlock
+	auto const block = VirtualRangeBlock {
+		.elementCount = 0, // not needed for validity check
+		.elementOffset = 0, // not needed for validity check
+		.handle = blockHandle,
+	};
+	return block.valid(*this) && self.isAlive(handle_index(blockHandle));
 }
 
 u64 srat::VirtualRangeAllocator::elementOffset(u32 blockIndex) const

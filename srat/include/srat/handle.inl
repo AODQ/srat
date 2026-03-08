@@ -123,7 +123,7 @@ bool srat::HandlePool<Handle, InternalResource>::valid(
 	if (handle.id == 0) { return false; }
 	u32 const index = srat::handle_index(handle.id);
 	if (index >= maxHandles) { return false; }
-	return allocator.isIndexAlive(index);
+	return allocator.isHandleAlive(handle.id);
 }
 
 template <typename Handle, typename InternalResource>
