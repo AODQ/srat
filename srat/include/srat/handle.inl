@@ -5,7 +5,10 @@
 
 template <typename Handle, typename InternalResource>
 srat::HandlePool<Handle, InternalResource>
-srat::HandlePool<Handle, InternalResource>::create(u32 const maxHandles)
+srat::HandlePool<Handle, InternalResource>::create(
+	u32 const maxHandles,
+	char const * debugName
+)
 {
 	InternalResource * const resourceAllocations = (
 		static_cast<InternalResource *>(
@@ -18,6 +21,7 @@ srat::HandlePool<Handle, InternalResource>::create(u32 const maxHandles)
 	return srat::HandlePool<Handle, InternalResource>(
 		VirtualRangeAllocator::create(
 			VirtualRangeCreateParams {
+				.debugName = debugName,
 				.elementCount = maxHandles,
 				.maxBlockAllocations = maxHandles,
 			}
@@ -29,6 +33,7 @@ srat::HandlePool<Handle, InternalResource>::create(u32 const maxHandles)
 
 template <typename Handle, typename InternalResource>
 void srat::HandlePool<Handle, InternalResource>::deleteInternal() {
+	if (resourceAllocations == nullptr) { return; }
 	for (u32 i = 0; i < maxHandles; ++i) {
 		if (allocator.isIndexAlive(i)) {
 			u64 const elementOffset = allocator.elementOffset(i);
@@ -61,11 +66,12 @@ srat::HandlePool<Handle, InternalResource> &
 srat::HandlePool<Handle, InternalResource>::operator=(HandlePool && o)
 {
 	if (this != &o) {
-		allocator = std::move(o.allocator);
 		deleteInternal();
+		allocator = std::move(o.allocator);
 		resourceAllocations = o.resourceAllocations;
 		maxHandles = o.maxHandles;
 		o.resourceAllocations = nullptr;
+		o.maxHandles = 0;
 	}
 	return *this;
 }

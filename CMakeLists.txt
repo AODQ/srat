@@ -37,6 +37,8 @@ add_library(
 	srat
 	STATIC
 	srat/src/virtual-range-allocator.cpp
+	srat/src/rasterizer.cpp
+	srat/src/image.cpp
 )
 target_include_directories(
 	srat
@@ -45,7 +47,11 @@ target_include_directories(
 	srat/include
 )
 
-target_compile_options(srat PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_compile_options(
+	srat
+	PRIVATE -Wall -Wextra -Wpedantic -Werror -mavx2 -mfma
+	INTERFACE -mavx2 -mfma
+)
 target_link_libraries(srat)
 
 # ------------------------------------------------------------------------------
@@ -60,6 +66,8 @@ target_sources(
 	app/unit-tests.cpp
 	app/unit-test-virtual-block-allocator.cpp
 	app/unit-test-handles.cpp
+	app/unit-test-math.cpp
+	app/unit-test-rasterizer.cpp
 )
 target_include_directories(
 	app

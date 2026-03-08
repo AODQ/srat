@@ -79,20 +79,20 @@ TEST_CASE("handle pool allocate until full") {
 	CHECK(handlePool.empty());
 }
 
-// TEST_CASE("handle pool move") {
-// 	auto pool1 = srat::HandlePool<TestHandle, i32>::create(128);
-// 	TestHandle handle = pool1.allocate(99);
-// 	CHECK(pool1.valid(handle));
-// 	// move the pool
-// 	auto pool2 = std::move(pool1);
-// 	// handle must still be valid against the moved-to pool
-// 	CHECK(pool2.valid(handle));
-// 	i32 * value = pool2.get(handle);
-// 	CHECK(value != nullptr);
-// 	CHECK(*value == 99);
-// 	pool2.free(handle);
-// 	CHECK(pool2.empty());
-// }
+TEST_CASE("handle pool move") {
+	auto pool1 = srat::HandlePool<TestHandle, i32>::create(128);
+	TestHandle handle = pool1.allocate(99);
+	CHECK(pool1.valid(handle));
+	// move the pool
+	auto pool2 = std::move(pool1);
+	// handle must still be valid against the moved-to pool
+	CHECK(pool2.valid(handle));
+	i32 * value = pool2.get(handle);
+	CHECK(value != nullptr);
+	CHECK(*value == 99);
+	pool2.free(handle);
+	CHECK(pool2.empty());
+}
 
 TEST_CASE("handle pool multiple allocations correct resources") {
 	static constexpr u64 kCount = 32;
@@ -129,19 +129,19 @@ TEST_CASE("handle pool double free") {
 	CHECK(handlePool.empty());
 }
 
-// TEST_CASE("handle pool rvalue allocate") {
-// 	auto handlePool = srat::HandlePool<TestHandle, std::vector<i32>>::create(128);
-// 	std::vector<i32> vec = { 1, 2, 3, 4, 5 };
-// 	TestHandle handle = handlePool.allocate(std::move(vec));
-// 	CHECK(handlePool.valid(handle));
-// 	auto * value = handlePool.get(handle);
-// 	CHECK(value != nullptr);
-// 	CHECK(value->size() == 5);
-// 	CHECK((*value)[0] == 1);
-// 	CHECK((*value)[4] == 5);
-// 	handlePool.free(handle);
-// 	CHECK(handlePool.empty());
-// }
+TEST_CASE("handle pool rvalue allocate") {
+	auto handlePool = srat::HandlePool<TestHandle, std::vector<i32>>::create(128);
+	std::vector<i32> vec = { 1, 2, 3, 4, 5 };
+	TestHandle handle = handlePool.allocate(std::move(vec));
+	CHECK(handlePool.valid(handle));
+	auto * value = handlePool.get(handle);
+	CHECK(value != nullptr);
+	CHECK(value->size() == 5);
+	CHECK((*value)[0] == 1);
+	CHECK((*value)[4] == 5);
+	handlePool.free(handle);
+	CHECK(handlePool.empty());
+}
 
 TEST_CASE("handle pool large struct resource") {
 	struct LargeResource {

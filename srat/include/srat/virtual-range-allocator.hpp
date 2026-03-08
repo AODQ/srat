@@ -30,6 +30,7 @@ struct VirtualRangeAllocateParams
 
 struct VirtualRangeCreateParams
 {
+	char const * debugName;
 	u64 elementCount;
 	u32 maxBlockAllocations;
 };
@@ -62,6 +63,7 @@ struct VirtualRangeAllocator
 
 #if SRAT_DEBUG
 	void printAllocationStats() const;
+	char const * debugName() const;
 #endif
 
 	// virtual range allocators can't be copied
@@ -80,12 +82,13 @@ private:
 	friend struct VirtualRangeBlock;
 
 	// internal data for the allocator
-	u64 _internalData[4];
+	u64 _internalData[6];
 };
 
 // this verifies all allocators are empty, used at program exit for leaks
 #if SRAT_DEBUG
 bool virtual_range_allocator_all_empty();
+void virtual_range_allocator_verify_all_empty();
 #endif
 
 } // namespace srat

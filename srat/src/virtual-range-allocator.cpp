@@ -2,12 +2,16 @@
 
 #include <srat/handle.hpp>
 
+#include <string>
 #include <utility>
 #include <set> // only for tracking allocators
 
 // -----------------------------------------------------------------------------
 // -- virtual range internal data structure
 // -----------------------------------------------------------------------------
+
+// TODO: remove the odd/even generation for alive/dead tracking, i already
+//       use an allocated bool so it's a bit redundant
 
 namespace
 {
@@ -23,20 +27,24 @@ struct VirtualRangeBlockInternal
 
 struct VirtualRangeAllocatorData
 {
+	char const * debugName;
 	u64 elementCount;
 	u32 maxBlockAllocations;
 	VirtualRangeBlockInternal * allocatedBlocks;
 	u32 freeListHeadIndex { 0u };
 
-	bool isDead(u32 index) const
-	{
-		return !srat::generation_alive(allocatedBlocks[index].generation);
-	}
-
 	bool isAlive(u32 index) const
 	{
 		u32 const gen = allocatedBlocks[index].generation;
-		return gen != 0 && srat::generation_alive(gen);
+		bool const allocated = allocatedBlocks[index].allocated;
+		return gen != 0 && srat::generation_alive(gen) && allocated;
+	}
+
+	bool isDead(u32 index) const
+	{
+		u32 const gen = allocatedBlocks[index].generation;
+		bool const allocated = allocatedBlocks[index].allocated;
+		return gen == 0 || (!srat::generation_alive(gen) && !allocated);
 	}
 
 	void sortFreeList();
@@ -47,7 +55,7 @@ struct VirtualRangeAllocatorData
 	) \
 )
 static_assert(
-	sizeof(VirtualRangeAllocatorData) == sizeof(srat::VirtualRangeAllocator),
+	sizeof(VirtualRangeAllocatorData) <= sizeof(srat::VirtualRangeAllocator),
 	"fit mismatch"
 );
 
@@ -133,6 +141,7 @@ srat::VirtualRangeAllocator srat::VirtualRangeAllocator::create(
 	VirtualRangeAllocatorData & self = AllocatorData(allocator);
 	// initialize the allocator with the provided parameters
 	self = {
+		.debugName = nullptr,
 		.elementCount = params.elementCount,
 		// note; need extra block for free block otherwise would run out of
 		//       memory when user allocates the max block allocations
@@ -142,6 +151,9 @@ srat::VirtualRangeAllocator srat::VirtualRangeAllocator::create(
 		],
 		.freeListHeadIndex = 0u,
 	};
+#if SRAT_DEBUG
+	self.debugName = params.debugName; // TODO alloc+copy this
+#endif
 	for (u32 it = 0; it < params.maxBlockAllocations + 1; ++it) {
 		self.allocatedBlocks[it] = {
 			.elementOffset = 0u,
@@ -212,6 +224,7 @@ void srat::VirtualRangeAllocator::moveFrom(VirtualRangeAllocator && o)
 	self = std::move(otherSelf);
 	// invalidate the source allocator's internal data
 	otherSelf = VirtualRangeAllocatorData {
+		.debugName = {}, // not needed for move
 		.elementCount = 0,
 		.maxBlockAllocations = 0,
 		.allocatedBlocks = nullptr,
@@ -298,6 +311,8 @@ srat::VirtualRangeBlock srat::VirtualRangeAllocator::allocate(
 			if (srat::generation_alive(freeBlock.generation)) {
 				SRAT_ASSERT(freeBlock.allocated == false);
 				srat::generation_inc(freeBlock.generation);
+				freeBlock.nextFreeIndex = skFreeListEnd;
+				freeBlock.allocated = false;
 				SRAT_ASSERT(self.isDead(freeIndex));
 			}
 			freeBlock.elementOffset = 0;
@@ -322,6 +337,7 @@ srat::VirtualRangeBlock srat::VirtualRangeAllocator::allocate(
 			.allocated = true,
 		};
 		generation_inc(self.allocatedBlocks[allocatedIndex].generation);
+		self.allocatedBlocks[allocatedIndex].allocated = true;
 		SRAT_ASSERT(self.isAlive(allocatedIndex));
 
 		return VirtualRangeBlock {
@@ -389,6 +405,8 @@ void srat::VirtualRangeAllocator::free(u64 const handle)
 				if (srat::generation_alive(nextBlock.generation)) {
 					SRAT_ASSERT(nextBlock.allocated == false);
 					srat::generation_inc(nextBlock.generation);
+					nextBlock.nextFreeIndex = skFreeListEnd;
+					nextBlock.allocated = false;
 					SRAT_ASSERT(self.isDead(nextIndex));
 				}
 				nextBlock.elementOffset = 0;
@@ -409,6 +427,7 @@ void srat::VirtualRangeAllocator::clear()
 		// kill alive blocks by incrementing generation
 		if (self.isAlive(it)) {
 			generation_inc(self.allocatedBlocks[it].generation);
+			self.allocatedBlocks[it].allocated = false;
 			SRAT_ASSERT(self.isDead(it));
 		}
 		// reset block to an empty state
@@ -424,6 +443,7 @@ void srat::VirtualRangeAllocator::clear()
 	// reinitialize slot 0
 	if (self.isDead(0)) { // resurrect as free block
 		generation_inc(self.allocatedBlocks[0].generation);
+		self.allocatedBlocks[0].allocated = false;
 	}
 	self.allocatedBlocks[0].elementCount = self.elementCount;
 	self.freeListHeadIndex = 0u;
@@ -431,6 +451,11 @@ void srat::VirtualRangeAllocator::clear()
 
 void srat::VirtualRangeAllocator::printAllocationStats() const
 {
+}
+
+char const * srat::VirtualRangeAllocator::debugName() const
+{
+	return AllocatorData(*this, const).debugName;
 }
 
 bool srat::VirtualRangeAllocator::empty() const
@@ -460,5 +485,18 @@ bool srat::virtual_range_allocator_all_empty()
 		}
 	}
 	return true;
+}
+
+void srat::virtual_range_allocator_verify_all_empty()
+{
+	for (auto allocator : sAllocators) {
+		if (!allocator->empty()) {
+			printf(
+				"allocator '%s' not empty\n",
+				allocator->debugName()
+			);
+			SRAT_ASSERT(false && "allocator not empty");
+		}
+	}
 }
 #endif

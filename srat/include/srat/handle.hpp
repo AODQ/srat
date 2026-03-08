@@ -19,7 +19,10 @@ struct HandlePool
 		"handle must have an id of type uint64_t"
 	);
 
-	static HandlePool<Handle, InternalResource> create(u32 const maxHandles);
+	static HandlePool<Handle, InternalResource> create(
+		u32 const maxHandles,
+		char const * debugName = "HandlePool"
+	);
 	~HandlePool();
 	HandlePool(HandlePool const &) = delete;
 	HandlePool & operator=(HandlePool const &) = delete;
