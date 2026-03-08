@@ -45,7 +45,7 @@ target_include_directories(
 	srat/include
 )
 
-target_compile_options(srat PRIVATE -Wall)
+target_compile_options(srat PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries(srat)
 
 # ------------------------------------------------------------------------------
@@ -67,7 +67,7 @@ target_include_directories(
 	external/doctest
 )
 target_link_libraries(app PRIVATE srat raylib)
-target_compile_options(app PRIVATE -Wall)
+target_compile_options(app PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 # install
 install(

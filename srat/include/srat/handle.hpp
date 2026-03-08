@@ -19,7 +19,7 @@ struct HandlePool
 		"handle must have an id of type uint64_t"
 	);
 
-	static HandlePool<Handle, InternalResource> create(u64 const maxHandles);
+	static HandlePool<Handle, InternalResource> create(u32 const maxHandles);
 	~HandlePool();
 	HandlePool(HandlePool const &) = delete;
 	HandlePool & operator=(HandlePool const &) = delete;
@@ -69,10 +69,19 @@ inline u32 handle_generation(u64 const handle_id) {
 	return (handle_id >> 32) & 0xFFFFFFFF;
 }
 inline void handle_generation_inc(u64 & handle_id) {
+	if (handle_generation(handle_id) == UINT32_MAX) {
+		// wrap around from max->0
+		handle_id &= 0x00000000FFFFFFFF;
+	}
 	handle_id += (1ull << 32);
 }
 inline void handle_generation_clear(u64 & handle_id) {
 	handle_id &= 0x00000000FFFFFFFF;
+}
+inline bool generation_alive(u32 const generation) {
+	// odd=allocated, even=free,
+	// 0=invalid
+	return (generation != 0) && ((generation & 1) == 1);
 }
 inline u32 generation_inc(u32 & generation) {
 	generation += 1;

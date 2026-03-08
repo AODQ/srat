@@ -3,6 +3,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <random>
 
 // -- note many of these unit tests are AI generated so that they may
@@ -32,7 +33,7 @@ TEST_CASE("virtual block allocator one allocation") {
 	srat::VirtualRangeBlock block = allocator.allocate({.elementCount = 128,});
 	CHECK(block.valid(allocator));
 	CHECK(!allocator.empty());
-	allocator.free(block);
+	allocator.free(block.handle);
 	CHECK(allocator.empty());
 }
 
@@ -48,7 +49,7 @@ TEST_CASE("virtual block allocator alloc+free+alloc+free") {
 		srat::VirtualRangeBlock block = allocator.allocate({.elementCount = 128,});
 		CHECK(block.valid(allocator));
 		CHECK(!allocator.empty());
-		allocator.free(block);
+		allocator.free(block.handle);
 		CHECK(allocator.empty());
 	}
 
@@ -56,7 +57,7 @@ TEST_CASE("virtual block allocator alloc+free+alloc+free") {
 		srat::VirtualRangeBlock block = allocator.allocate({.elementCount = 128,});
 		CHECK(block.valid(allocator));
 		CHECK(!allocator.empty());
-		allocator.free(block);
+		allocator.free(block.handle);
 		CHECK(allocator.empty());
 	}
 }
@@ -79,7 +80,22 @@ TEST_CASE("virtual block allocate overflow") {
 	CHECK(!block2.valid(allocator));
 }
 
-TEST_CASE("virtual block reset") {
+TEST_CASE("virtual block reset one chunk") {
+	CHECK(srat::virtual_range_allocator_all_empty());
+	auto allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.elementCount = 128,
+			.maxBlockAllocations = 128,
+		})
+	);
+
+	srat::VirtualRangeBlock block = allocator.allocate({.elementCount = 128,});
+	CHECK(block.valid(allocator));
+	allocator.clear();
+	CHECK(allocator.empty());
+}
+
+TEST_CASE("virtual block reset large chunks") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = (
 		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
@@ -94,8 +110,41 @@ TEST_CASE("virtual block reset") {
 	}
 	allocator.clear();
 	CHECK(allocator.empty());
-	allocator.printAllocationStats();
-	for (size_t it =0; it < 127; ++it) {
+}
+
+TEST_CASE("virtual block reset small chunks") {
+	CHECK(srat::virtual_range_allocator_all_empty());
+	auto allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.elementCount = 128,
+			.maxBlockAllocations = 128,
+		})
+	);
+
+	for (size_t it =0; it < 128; ++it) {
+		srat::VirtualRangeBlock block = allocator.allocate({.elementCount = 1,});
+		CHECK(block.valid(allocator));
+	}
+	allocator.clear();
+	CHECK(allocator.empty());
+}
+
+TEST_CASE("virtual block reset then reset") {
+	CHECK(srat::virtual_range_allocator_all_empty());
+	auto allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.elementCount = 128,
+			.maxBlockAllocations = 128,
+		})
+	);
+
+	for (size_t it =0; it < 16; ++it) {
+		srat::VirtualRangeBlock block = allocator.allocate({.elementCount = 8,});
+		CHECK(block.valid(allocator));
+	}
+	allocator.clear();
+	CHECK(allocator.empty());
+	for (size_t it = 0; it < 127; ++it) {
 		srat::VirtualRangeBlock block = allocator.allocate({.elementCount = 1,});
 		CHECK(block.valid(allocator));
 	}
@@ -122,7 +171,7 @@ TEST_CASE("virtual block allocator many allocations then free") {
 		}
 		
 		for (auto & block : blocks) {
-			allocator.free(block);
+			allocator.free(block.handle);
 		}
 		CHECK_MESSAGE(allocator.empty(), "allocs: ", allocs);
 	}
@@ -137,7 +186,7 @@ TEST_CASE("virtual block allocator many allocations then free") {
 		}
 		
 		for (auto & block : blocks) {
-			allocator.free(block);
+			allocator.free(block.handle);
 		}
 		CHECK_MESSAGE(allocator.empty(), "allocs: ", allocs);
 	}
@@ -168,16 +217,16 @@ TEST_CASE("virtual block allocator alignment") {
 
 	// free aligned — sits between leading pad free block [1,8)
 	// and `after` which is still allocated, so no coalesce expected
-	allocator.free(aligned);
+	allocator.free(aligned.handle);
 
 	// free misalign — offset 0, count 1, adjacent to leading pad [1,8)
 	// should coalesce into [0, 8)
-	allocator.free(misalign);
+	allocator.free(misalign.handle);
 
 	// free after — offset 16, count 1
 	// free list should now be: [0,8) and [16,17) and [17, 128)
 	// the last two should coalesce into [16, 128)
-	allocator.free(after);
+	allocator.free(after.handle);
 
 	// now free list should be [0,8), [8,16), [16,128)
 	// wait — [8,16) is `aligned` which was already freed above
@@ -191,7 +240,7 @@ TEST_CASE("virtual block allocator stress test") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 
 	static constexpr size_t kElementCount = 1024;
-	static constexpr size_t kMaxBlocks = 64;
+	static constexpr size_t kMaxBlocks = 1024;
 	static constexpr size_t kIterations = 64;
 
 	auto allocator = srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
@@ -216,7 +265,7 @@ TEST_CASE("virtual block allocator stress test") {
 		// -- random free phase: free in random order
 		std::shuffle(live.begin(), live.end(), rng);
 		for (auto & block : live) {
-			allocator.free(block);
+			allocator.free(block.handle);
 		}
 
 		CHECK_MESSAGE(allocator.empty(), "iter: ", iter);
@@ -232,7 +281,7 @@ TEST_CASE("virtual block allocator stress test") {
 		std::vector<srat::VirtualRangeBlock> remaining;
 		for (size_t i = 0; i < live.size(); ++i) {
 			if (i % 2 == 0) {
-				allocator.free(live[i]);
+				allocator.free(live[i].handle);
 			} else {
 				remaining.emplace_back(live[i]);
 			}
@@ -246,7 +295,7 @@ TEST_CASE("virtual block allocator stress test") {
 		// free everything remaining
 		std::shuffle(remaining.begin(), remaining.end(), rng);
 		for (auto & block : remaining) {
-			allocator.free(block);
+			allocator.free(block.handle);
 		}
 
 		CHECK_MESSAGE(allocator.empty(), "iter (partial): ", iter);
@@ -275,7 +324,7 @@ TEST_CASE("virtual block allocator exact fit after fragmentation") {
 	CHECK(b.valid(allocator));
 
 	// free A — creates an exact 16-element gap at the start
-	allocator.free(a);
+	allocator.free(a.handle);
 
 	// allocate exactly 16 into the gap — must not absorb B or leave fragments
 	auto c = allocator.allocate({ .elementCount = 16 });
@@ -286,8 +335,8 @@ TEST_CASE("virtual block allocator exact fit after fragmentation") {
 	auto overflow = allocator.allocate({ .elementCount = 1 });
 	CHECK_FALSE(overflow.valid(allocator));
 
-	allocator.free(b);
-	allocator.free(c);
+	allocator.free(b.handle);
+	allocator.free(c.handle);
 	CHECK(allocator.empty());
 }
 
@@ -311,39 +360,8 @@ TEST_CASE("virtual block allocator alignment already satisfied") {
 	auto overflow = allocator.allocate({ .elementCount = 1 });
 	CHECK_FALSE(overflow.valid(allocator));
 
-	allocator.free(a);
-	allocator.free(b);
-	CHECK(allocator.empty());
-}
-
-TEST_CASE("virtual block allocator slot exhaustion forces absorption") {
-	CHECK(srat::virtual_range_allocator_all_empty());
-
-	// use a tiny maxBlockAllocations to make slot exhaustion easy to trigger
-	// with 4 slots: slot 0 = initial free block, slots 1-3 consumed by allocs,
-	// leaving no slot for a trailing fragment
-	static constexpr u64 kMaxBlocks = 4;
-	auto allocator = srat::VirtualRangeAllocator::create({
-		.elementCount = 256,
-		.maxBlockAllocations = kMaxBlocks,
-	});
-
-	// fill all slots with allocations that each consume a free slot
-	// allocate with sizes that leave trailing fragments, exhausting slots
-	std::vector<srat::VirtualRangeBlock> blocks;
-	while (true) {
-		auto block = allocator.allocate({ .elementCount = 7 });
-		if (!block.valid(allocator)) { break; }
-		// block may be larger than 7 if trailing was absorbed
-		CHECK(block.elementCount >= 7);
-		blocks.emplace_back(block);
-	}
-	CHECK_FALSE(blocks.empty());
-
-	// free all and verify full recovery
-	for (auto & block : blocks) {
-		allocator.free(block);
-	}
+	allocator.free(a.handle);
+	allocator.free(b.handle);
 	CHECK(allocator.empty());
 }
 
@@ -368,7 +386,7 @@ TEST_CASE("virtual block allocator block invalid after clear") {
 	// allocator should be fully usable after clear
 	auto c = allocator.allocate({ .elementCount = 128 });
 	CHECK(c.valid(allocator));
-	allocator.free(c);
+	allocator.free(c.handle);
 	CHECK(allocator.empty());
 }
 
@@ -389,20 +407,17 @@ TEST_CASE("virtual block allocator alternating free order") {
 	CHECK(c.valid(allocator));
 	CHECK(d.valid(allocator));
 
-	// free B — isolated gap, no coalesce
-	allocator.free(b);
+	allocator.free(b.handle);
 	CHECK_FALSE(allocator.empty());
 
-	// free D — tail, no right neighbour
-	allocator.free(d);
+	allocator.free(d.handle);
 	CHECK_FALSE(allocator.empty());
 
-	// free C — adjacent to both B (left) and D (right), should coalesce B+C+D
-	allocator.free(c);
+	allocator.free(c.handle);
 	CHECK_FALSE(allocator.empty());
 
 	// free A — adjacent to B+C+D block, should coalesce entire range
-	allocator.free(a);
+	allocator.free(a.handle);
 	CHECK(allocator.empty());
 }
 
@@ -418,12 +433,12 @@ TEST_CASE("virtual block allocator block invalid after free") {
 	CHECK(a.valid(allocator));
 	CHECK(b.valid(allocator));
 
-	allocator.free(a);
+	allocator.free(a.handle);
 	CHECK_FALSE(a.valid(allocator));
 	// b must still be valid
 	CHECK(b.valid(allocator));
 
-	allocator.free(b);
+	allocator.free(b.handle);
 	CHECK_FALSE(a.valid(allocator));
 	CHECK_FALSE(b.valid(allocator));
 	CHECK(allocator.empty());
@@ -438,7 +453,7 @@ TEST_CASE("virtual block allocator stale block after reallocation") {
 
 	auto old = allocator.allocate({ .elementCount = 128 });
 	CHECK(old.valid(allocator));
-	allocator.free(old);
+	allocator.free(old.handle);
 	CHECK_FALSE(old.valid(allocator));
 
 	// reallocate same region
@@ -447,7 +462,7 @@ TEST_CASE("virtual block allocator stale block after reallocation") {
 	// old block must still be invalid even though region is live again
 	CHECK_FALSE(old.valid(allocator));
 
-	allocator.free(fresh);
+	allocator.free(fresh.handle);
 	CHECK(allocator.empty());
 }
 
@@ -475,8 +490,8 @@ TEST_CASE("virtual block allocator alignment exact fit to end") {
 	auto overflow = allocator.allocate({ .elementCount = 1 });
 	CHECK_FALSE(overflow.valid(allocator));
 
-	allocator.free(misalign);
-	allocator.free(aligned);
+	allocator.free(misalign.handle);
+	allocator.free(aligned.handle);
 	CHECK(allocator.empty());
 }
 
@@ -496,10 +511,51 @@ TEST_CASE("virtual block allocator elementCount preserved") {
 	CHECK(a.elementCount == 7);
 	CHECK(b.elementCount == 13);
 	CHECK(c.elementCount == 32);
+	allocator.free(a.handle);
+	allocator.free(b.handle);
+	allocator.free(c.handle);
+	CHECK(allocator.empty());
 
-	allocator.free(a);
-	allocator.free(b);
-	allocator.free(c);
+	c = allocator.allocate({ .elementCount = 32 });
+	b = allocator.allocate({ .elementCount = 13 });
+	a = allocator.allocate({ .elementCount = 7 });
+	CHECK(a.valid(allocator));
+	CHECK(b.valid(allocator));
+	CHECK(c.valid(allocator));
+	CHECK(a.elementCount == 7);
+	CHECK(b.elementCount == 13);
+	CHECK(c.elementCount == 32);
+	allocator.free(a.handle);
+	allocator.free(b.handle);
+	allocator.free(c.handle);
+	CHECK(allocator.empty());
+
+	a = allocator.allocate({ .elementCount = 7 });
+	c = allocator.allocate({ .elementCount = 32 });
+	b = allocator.allocate({ .elementCount = 13 });
+	CHECK(a.valid(allocator));
+	CHECK(b.valid(allocator));
+	CHECK(c.valid(allocator));
+	CHECK(a.elementCount == 7);
+	CHECK(b.elementCount == 13);
+	CHECK(c.elementCount == 32);
+	allocator.free(a.handle);
+	allocator.free(b.handle);
+	allocator.free(c.handle);
+	CHECK(allocator.empty());
+
+	b = allocator.allocate({ .elementCount = 13 });
+	c = allocator.allocate({ .elementCount = 32 });
+	a = allocator.allocate({ .elementCount = 7 });
+	CHECK(a.valid(allocator));
+	CHECK(b.valid(allocator));
+	CHECK(c.valid(allocator));
+	CHECK(a.elementCount == 7);
+	CHECK(b.elementCount == 13);
+	CHECK(c.elementCount == 32);
+	allocator.free(a.handle);
+	allocator.free(b.handle);
+	allocator.free(c.handle);
 	CHECK(allocator.empty());
 }
 

@@ -4,3 +4,6 @@
 [submodule "external/thread-pool"]
 	path = external/thread-pool
 	url = https://github.com/bshoshany/thread-pool
+[submodule "build/external/doctest"]
+	path = build/external/doctest
+	url = https://github.com/doctest/doctest

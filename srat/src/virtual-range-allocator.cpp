@@ -16,21 +16,30 @@ struct VirtualRangeBlockInternal
 {
 	u64 elementOffset;
 	u64 elementCount;
+	u32 nextFreeIndex;
+	u32 generation;
+	bool allocated;
 };
 
 struct VirtualRangeAllocatorData
 {
 	u64 elementCount;
-	u64 maxBlockAllocations;
+	u32 maxBlockAllocations;
 	VirtualRangeBlockInternal * allocatedBlocks;
-	u32 * nextFreeIndices;
-	u32 * generations;
 	u32 freeListHeadIndex { 0u };
 
-	bool slotAvailable(u32 index) const
+	bool isDead(u32 index) const
 	{
-		return generations[index] % 2 == 0;
+		return !srat::generation_alive(allocatedBlocks[index].generation);
 	}
+
+	bool isAlive(u32 index) const
+	{
+		u32 const gen = allocatedBlocks[index].generation;
+		return gen != 0 && srat::generation_alive(gen);
+	}
+
+	void sortFreeList();
 };
 #define AllocatorData(allocator, ...) ( \
 	*reinterpret_cast<VirtualRangeAllocatorData __VA_ARGS__ *>( \
@@ -50,6 +59,49 @@ std::set<srat::VirtualRangeAllocator *> sAllocators;
 
 } // namespace
 
+void VirtualRangeAllocatorData::sortFreeList()
+{
+	// -- sort the free list by element offset using insertion sort
+	u32 sortedHead = skFreeListEnd;
+	u32 it = freeListHeadIndex;
+	while (it != skFreeListEnd) {
+		auto & currBlock = allocatedBlocks[it];
+		u32 const nextIt = currBlock.nextFreeIndex;
+		// insert current block into sorted list
+		if (
+			   sortedHead == skFreeListEnd
+			|| currBlock.elementOffset < allocatedBlocks[sortedHead].elementOffset
+		) {
+			// insert at head of sorted list
+			currBlock.nextFreeIndex = sortedHead;
+			sortedHead = it;
+			it = nextIt;
+			continue;
+		}
+		// insert into middle or end of sorted list
+		u32 sortedIt = sortedHead;
+		while (true) {
+			auto & sortedBlock = allocatedBlocks[sortedIt];
+			u32 const sortedNext = sortedBlock.nextFreeIndex;
+			if (
+					sortedNext == skFreeListEnd
+				|| (
+					  currBlock.elementOffset
+					< allocatedBlocks[sortedNext].elementOffset
+				)
+			) {
+				// insert after sortedIt
+				currBlock.nextFreeIndex = sortedNext;
+				sortedBlock.nextFreeIndex = it;
+				break;
+			}
+			sortedIt = sortedNext;
+		}
+		it = nextIt;
+	}
+	freeListHeadIndex = sortedHead;
+}
+
 // -----------------------------------------------------------------------------
 // -- virtual range block implementation
 // -----------------------------------------------------------------------------
@@ -58,11 +110,12 @@ bool srat::VirtualRangeBlock::valid(
     VirtualRangeAllocator const & allocator
  ) const
  {
- 	if (this->elementCount == 0) { return false; }
-	u32 const gen = (
-		AllocatorData(allocator, const).generations[handle_index(this->handle)]
-	);
-	return handle_generation(this->handle) == gen;
+	u32 const idx = handle_index(this->handle);
+	VirtualRangeAllocatorData const & self = AllocatorData(allocator, const);
+	SRAT_ASSERT(idx < self.maxBlockAllocations);
+	auto const & block = self.allocatedBlocks[idx];
+	if (!block.allocated) { return false; }
+	return handle_generation(this->handle) == block.generation;
  }
 
 // -----------------------------------------------------------------------------
@@ -75,37 +128,55 @@ srat::VirtualRangeAllocator srat::VirtualRangeAllocator::create(
 {
 	SRAT_ASSERT(params.elementCount > 0);
 	SRAT_ASSERT(params.maxBlockAllocations > 0);
-	SRAT_ASSERT(params.maxBlockAllocations < skFreeListEnd);
+	SRAT_ASSERT(params.maxBlockAllocations + 1 < skFreeListEnd);
 	VirtualRangeAllocator allocator {};
 	VirtualRangeAllocatorData & self = AllocatorData(allocator);
 	// initialize the allocator with the provided parameters
 	self = {
 		.elementCount = params.elementCount,
+		// note; need extra block for free block otherwise would run out of
+		//       memory when user allocates the max block allocations
+		.maxBlockAllocations = params.maxBlockAllocations + 1,
 		.allocatedBlocks = new VirtualRangeBlockInternal[
-			params.maxBlockAllocations
+			params.maxBlockAllocations + 1
 		],
-		.nextFreeIndices = new u32[params.maxBlockAllocations],
-		.generations = new u32[params.maxBlockAllocations],
-		.maxBlockAllocations = params.maxBlockAllocations,
 		.freeListHeadIndex = 0u,
 	};
-	for (size_t it = 0; it < params.maxBlockAllocations; ++it) {
-		self.allocatedBlocks[it] = { .elementCount = 0, .elementOffset = 0 };
-		self.nextFreeIndices[it] = skFreeListEnd;
-		self.generations[it] = 0u; // initialize to free
+	for (u32 it = 0; it < params.maxBlockAllocations + 1; ++it) {
+		self.allocatedBlocks[it] = {
+			.elementOffset = 0u,
+			.elementCount = 0u,
+			.nextFreeIndex = skFreeListEnd,
+			.generation = 0u, // invalid state
+			.allocated = false,
+		};
 	}
 	// initialize the allocated blocks to an empty state
 	self.allocatedBlocks[0] = VirtualRangeBlockInternal {
 		.elementOffset = 0,
 		.elementCount = params.elementCount,
+		.nextFreeIndex = skFreeListEnd,
+		.generation = 1u, // initialize to free (odd=free)
+		.allocated = false,
 	};
-	self.nextFreeIndices[0] = skFreeListEnd;
-	self.generations[0] = 0u; // initialize to free
 #if SRAT_DEBUG
 	// track the allocator for debugging purposes
 	sAllocators.insert(&allocator);
 #endif
 	return allocator;
+}
+
+bool srat::VirtualRangeAllocator::isIndexAlive(u32 blockIndex) const
+{
+	VirtualRangeAllocatorData const & self = AllocatorData(*this, const);
+	return self.isAlive(blockIndex);
+}
+
+u64 srat::VirtualRangeAllocator::elementOffset(u32 blockIndex) const
+{
+	VirtualRangeAllocatorData const & self = AllocatorData(*this, const);
+	SRAT_ASSERT(self.isAlive(blockIndex));
+	return self.allocatedBlocks[blockIndex].elementOffset;
 }
 
 void srat::VirtualRangeAllocator::moveFrom(VirtualRangeAllocator && o)
@@ -127,12 +198,10 @@ void srat::VirtualRangeAllocator::moveFrom(VirtualRangeAllocator && o)
 	// move the internal data
 	self = std::move(otherSelf);
 	// invalidate the source allocator's internal data
-	otherSelf = {
+	otherSelf = VirtualRangeAllocatorData {
 		.elementCount = 0,
 		.maxBlockAllocations = 0,
 		.allocatedBlocks = nullptr,
-		.nextFreeIndices = nullptr,
-		.generations = nullptr,
 		.freeListHeadIndex = skFreeListEnd,
 	};
 }
@@ -150,8 +219,6 @@ srat::VirtualRangeAllocator & srat::VirtualRangeAllocator::operator=(
 		// free existing resources
 		VirtualRangeAllocatorData & self = AllocatorData(*this);
 		delete[] self.allocatedBlocks;
-		delete[] self.nextFreeIndices;
-		delete[] self.generations;
 		moveFrom(std::move(o));
 	}
 	return *this;
@@ -161,8 +228,6 @@ srat::VirtualRangeAllocator::~VirtualRangeAllocator()
 {
 	VirtualRangeAllocatorData & self = AllocatorData(*this);
 	delete[] self.allocatedBlocks;
-	delete[] self.nextFreeIndices;
-	delete[] self.generations;
 #if SRAT_DEBUG
 	if (self.allocatedBlocks != nullptr)
 	{
@@ -179,269 +244,172 @@ srat::VirtualRangeAllocator::~VirtualRangeAllocator()
 
 srat::VirtualRangeBlock srat::VirtualRangeAllocator::allocate(
 	VirtualRangeAllocateParams const & request
-)
-{
+) {
 	VirtualRangeAllocatorData & self = AllocatorData(*this);
 
-	// -- find a free block that can satisfy the allocation request
-	u64 prevIdx = skFreeListEnd;
-	u64 currIdx = self.freeListHeadIndex;
-	while (currIdx != skFreeListEnd) {
-		VirtualRangeBlockInternal & curr = self.allocatedBlocks[currIdx];
+	// -- walk the free list to find a block that can satisfy the request
+	u32 prevFreeIndex = skFreeListEnd;
+	u32 freeIndex = self.freeListHeadIndex;
+	while (freeIndex != skFreeListEnd) {
+		// check if the current free block can satisfy the request
+		auto & freeBlock = self.allocatedBlocks[freeIndex];
 		u64 const alignedOffset = (
-			alignUp(curr.elementOffset, request.elementAlignment)
+			srat::alignUp(freeBlock.elementOffset, request.elementAlignment)
 		);
-		u64 const leadingPad = alignedOffset - curr.elementOffset;
-		u64 const totalRequired = leadingPad + request.elementCount;
-		if (curr.elementCount < totalRequired) {
-			prevIdx = currIdx;
-			currIdx = self.nextFreeIndices[currIdx];
+		u64 const padding = alignedOffset - freeBlock.elementOffset;
+		u64 const leadingFreeBlockOffset = freeBlock.elementOffset;
+		if (freeBlock.elementCount < request.elementCount + padding) {
+			// move to the next free block
+			prevFreeIndex = freeIndex;
+			freeIndex = freeBlock.nextFreeIndex;
 			continue;
 		}
-		// -- found a block that can satisfy the request, try to split
-		//    the block into an allocated and free block
-		u64 const trailingCount = curr.elementCount - totalRequired;
-		u64 actualElementCount = request.elementCount;
-
-		// -- find required slots
-		u64 allocSlot = currIdx;
-		if (leadingPad > 0) {
-			allocSlot = skFreeListEnd;
-			for (u64 it = 0; it < self.maxBlockAllocations; ++it) {
-				if (it != currIdx && self.slotAvailable(it)) {
-					allocSlot = it;
-					break;
-				}
-			}
-			if (allocSlot == skFreeListEnd) {
-				// no slot available for the allocation identity, skip this block
-				prevIdx = currIdx;
-				currIdx = self.nextFreeIndices[currIdx];
-				continue;
-			}
-		}
-
-		u64 trailingSlot = skFreeListEnd;
-		if (trailingCount > 0) {
-			for (u64 it = 0; it < self.maxBlockAllocations; ++it) {
-				if (it != currIdx && it != allocSlot && self.slotAvailable(it)) {
-					trailingSlot = it;
-					break;
-				}
-			}
-			if (trailingSlot == skFreeListEnd) {
-				// absorb trailing into allocation
-				actualElementCount += trailingCount;
-			}
-		}
-
-		// -- now modify the free list
-		if (leadingPad > 0) {
-			// curr stays as the leading fragment
-			curr.elementCount = leadingPad;
-
-			if (trailingCount > 0 && trailingSlot != skFreeListEnd) {
-				// insert trailing fragment after curr
-				self.allocatedBlocks[trailingSlot] = VirtualRangeBlockInternal {
-					.elementCount = trailingCount,
-					.elementOffset = alignedOffset + actualElementCount,
-				};
-				self.generations[trailingSlot] = 0u;
-				self.nextFreeIndices[trailingSlot] = self.nextFreeIndices[currIdx];
-				self.nextFreeIndices[currIdx] = trailingSlot;
-			}
-
-			// set up allocSlot as the allocation identity
-			self.allocatedBlocks[allocSlot] = VirtualRangeBlockInternal {
-				.elementCount = actualElementCount,
-				.elementOffset = alignedOffset,
-			};
-			generation_inc(self.generations[allocSlot]);
-			SRAT_ASSERT(self.generations[allocSlot] % 2 == 1); // odd=alive
-
-		} else {
-			// no leading fragment — currIdx is the allocation slot
-			u32 const nextIdx = self.nextFreeIndices[currIdx];
-
-			if (trailingCount > 0 && trailingSlot != skFreeListEnd) {
-				// reuse currIdx for trailing fragment, splice in place
-				self.allocatedBlocks[trailingSlot] = VirtualRangeBlockInternal {
-					.elementCount = trailingCount,
-					.elementOffset = alignedOffset + actualElementCount,
-				};
-				self.generations[trailingSlot] = self.generations[currIdx];
-				self.nextFreeIndices[trailingSlot] = nextIdx;
-
-				// unlink currIdx from free list, replace with trailingSlot
-				if (prevIdx == skFreeListEnd) {
-					self.freeListHeadIndex = trailingSlot;
-				} else {
-					self.nextFreeIndices[prevIdx] = trailingSlot;
-				}
+		// -- found a free block that can satisfy allocation
+		u64 const remainingCount = (
+			freeBlock.elementCount - request.elementCount - padding
+		);
+		u64 const allocatedOffset = alignedOffset;
+		// -- update the free block to reflect the allocated range
+		freeBlock.elementOffset += request.elementCount + padding;
+		freeBlock.elementCount = remainingCount;
+		if (freeBlock.elementCount == 0) {
+			// remove the free block from the free list if it's fully allocated
+			if (prevFreeIndex == skFreeListEnd) {
+				self.freeListHeadIndex = freeBlock.nextFreeIndex;
 			} else {
-				// no trailing — just unlink currIdx from free list
-				if (prevIdx == skFreeListEnd) {
-					self.freeListHeadIndex = nextIdx;
-				} else {
-					self.nextFreeIndices[prevIdx] = nextIdx;
-				}
+				self.allocatedBlocks[prevFreeIndex].nextFreeIndex = (
+					freeBlock.nextFreeIndex
+				);
 			}
-
-			// mark currIdx as the allocation
-			self.allocatedBlocks[currIdx] = VirtualRangeBlockInternal {
-				.elementCount = actualElementCount,
-				.elementOffset = alignedOffset,
-			};
-			generation_inc(self.generations[currIdx]);
-			SRAT_ASSERT(self.generations[currIdx] % 2 == 1); // odd=alive
+			// invalidate free block handle
+			generation_inc(freeBlock.generation);
+			freeBlock.elementOffset = 0;
+			freeBlock.elementCount = 0;
+			freeBlock.allocated = false;
+			freeBlock.nextFreeIndex = skFreeListEnd;
 		}
+		// -- create a new allocated block for the allocated range
+		u32 allocatedIndex = 1;
+		for (; allocatedIndex < self.maxBlockAllocations; ++allocatedIndex) {
+			if (self.isDead(allocatedIndex)) {
+				break;
+			}
+		}
+		SRAT_ASSERT(allocatedIndex < self.maxBlockAllocations);
+		SRAT_ASSERT(self.isDead(allocatedIndex));
+		self.allocatedBlocks[allocatedIndex] = VirtualRangeBlockInternal {
+			.elementOffset = leadingFreeBlockOffset,
+			.elementCount = request.elementCount + padding,
+			.nextFreeIndex = skFreeListEnd,
+			.generation = self.allocatedBlocks[allocatedIndex].generation,
+			.allocated = true,
+		};
+		generation_inc(self.allocatedBlocks[allocatedIndex].generation);
+		SRAT_ASSERT(self.isAlive(allocatedIndex));
 
-		return {
-			.elementCount = actualElementCount,
-			.elementOffset = alignedOffset,
-			.handle = handle_make(allocSlot, self.generations[allocSlot]),
+		return VirtualRangeBlock {
+			.elementCount = request.elementCount,
+			.elementOffset = allocatedOffset,
+			.handle = (
+				handle_make(
+					allocatedIndex,
+					self.allocatedBlocks[allocatedIndex].generation
+				)
+			),
 		};
 	}
 
-	// no free block remaining
-	return srat::VirtualRangeBlock{
+	// no free block could satisfy the request
+	return VirtualRangeBlock {
 		.elementCount = 0,
 		.elementOffset = 0,
 		.handle = 0,
 	};
 }
 
+void srat::VirtualRangeAllocator::free(u64 const handle)
+{
+	auto const block = VirtualRangeBlock {
+		.elementCount = 0, // not needed for free
+		.elementOffset = 0, // not needed for free
+		.handle = handle,
+	};
+	if (!block.valid(*this)) { return; }
+	VirtualRangeAllocatorData & self = AllocatorData(*this);
+	u32 const blockIndex = handle_index(block.handle);
+	auto & blockInternal = self.allocatedBlocks[blockIndex];
+
+	// -- increment the generation to invalidate the block's handle
+	// but need to increment twice to keep in an alive state
+	generation_inc(blockInternal.generation);
+	generation_inc(blockInternal.generation);
+	SRAT_ASSERT(self.isAlive(blockIndex));
+	blockInternal.allocated = false;
+
+	// -- create a new free block for the freed range
+	blockInternal.nextFreeIndex = self.freeListHeadIndex;
+
+	// -- insert the new free block into the free list
+	self.freeListHeadIndex = blockIndex;
+
+	// -- keep free list sorted by element offset
+	self.sortFreeList();
+
+	// -- coalesce adjacent free blocks in the free list
+	for (u32 it = self.freeListHeadIndex; it != skFreeListEnd;) {
+		auto & currentBlock = self.allocatedBlocks[it];
+		u32 const nextIndex = currentBlock.nextFreeIndex;
+		if (nextIndex != skFreeListEnd) {
+			auto & nextBlock = self.allocatedBlocks[nextIndex];
+			if (
+				currentBlock.elementOffset + currentBlock.elementCount ==
+				nextBlock.elementOffset
+			) {
+				// coalesce current block with next block
+				currentBlock.elementCount += nextBlock.elementCount;
+				currentBlock.nextFreeIndex = nextBlock.nextFreeIndex;
+				// invalidate the next block's handle by incrementing its generation
+				generation_inc(nextBlock.generation);
+				nextBlock.elementOffset = 0;
+				nextBlock.elementCount = 0;
+				nextBlock.nextFreeIndex = skFreeListEnd;
+				nextBlock.allocated = false;
+				continue; // check for further coalescing with the new next block
+			}
+		}
+		it = nextIndex;
+	}
+}
+
 void srat::VirtualRangeAllocator::clear()
 {
 	VirtualRangeAllocatorData & self = AllocatorData(*this);
-	for (size_t it = 0; it < self.maxBlockAllocations; ++it) {
-		self.allocatedBlocks[it] = VirtualRangeBlockInternal { 0, 0, };
-		self.nextFreeIndices[it] = skFreeListEnd;
+	for (u32 it = 0; it < self.maxBlockAllocations; ++it) {
 		// kill alive blocks by incrementing generation
-		if (!self.slotAvailable(it)) {
-			generation_inc(self.generations[it]);
-			SRAT_ASSERT(self.generations[it] % 2 == 0); // even=dead
+		if (self.isAlive(it)) {
+			generation_inc(self.allocatedBlocks[it].generation);
+			SRAT_ASSERT(self.isDead(it));
 		}
-	}
-	self.freeListHeadIndex = 0;
-	self.generations[0] = 0u;
-	self.allocatedBlocks[0] = VirtualRangeBlockInternal {
-		.elementCount = self.elementCount,
-		.elementOffset = 0,
-	};
-	self.nextFreeIndices[0] = skFreeListEnd;
-}
-
-void srat::VirtualRangeAllocator::free(VirtualRangeBlock const & block)
-{
-	VirtualRangeAllocatorData & self = AllocatorData(*this);
-
-	// -- invalidate the block by incrementing its generation
-	{
-		u32 const blockIdx = handle_index(block.handle);
-		generation_inc(self.generations[blockIdx]);
-		SRAT_ASSERT(self.generations[blockIdx] % 2 == 0); // even=dead
-	}
-
-	u32 freeSlot = handle_index(block.handle);
-
-	// -- insert the freed block into the free list
-	u32 prevIdx = skFreeListEnd;
-	u32 currIdx = self.freeListHeadIndex;
-	while (currIdx != skFreeListEnd) {
-		if (self.allocatedBlocks[currIdx].elementOffset > block.elementOffset) {
-			break;
-		}
-		prevIdx = currIdx;
-		currIdx = self.nextFreeIndices[currIdx];
-	}
-
-	// -- write the block into the free list and wire it in
-	{
-		VirtualRangeBlockInternal & slot = self.allocatedBlocks[freeSlot];
-		slot = {
-			.elementCount = block.elementCount,
-			.elementOffset = block.elementOffset,
+		// reset block to an empty state
+		u32 const gen = self.allocatedBlocks[it].generation;
+		self.allocatedBlocks[it] = VirtualRangeBlockInternal {
+			.elementOffset = 0,
+			.elementCount = 0,
+			.nextFreeIndex = skFreeListEnd,
+			.generation = gen, // preserve generation to invalidate handles
+			.allocated = false,
 		};
-		self.nextFreeIndices[freeSlot] = currIdx;
-
-		if (prevIdx == skFreeListEnd) {
-			self.freeListHeadIndex = freeSlot;
-		} else {
-			self.nextFreeIndices[prevIdx] = freeSlot;
-		}
 	}
-
-	// -- coalesce with previous block if adjacent
-	{
-		VirtualRangeBlockInternal & merge = self.allocatedBlocks[freeSlot];
-		if (prevIdx != skFreeListEnd) {
-			VirtualRangeBlockInternal & prev = self.allocatedBlocks[prevIdx];
-			if (prev.elementOffset + prev.elementCount == merge.elementOffset) {
-				prev.elementCount += merge.elementCount;
-				self.nextFreeIndices[prevIdx] = self.nextFreeIndices[freeSlot];
-				// invalidate the merge block
-				merge = { .elementCount = 0, .elementOffset = 0, };
-				freeSlot = prevIdx;
-			}
-		}
+	// reinitialize slot 0
+	if (self.isDead(0)) { // resurrect as free block
+		generation_inc(self.allocatedBlocks[0].generation);
 	}
-
-	// -- coalesce with next block if adjacent
-	{
-		VirtualRangeBlockInternal & merge = self.allocatedBlocks[freeSlot];
-		u32 const nextIdx = self.nextFreeIndices[freeSlot];
-		if (nextIdx != skFreeListEnd) {
-			VirtualRangeBlockInternal & next = self.allocatedBlocks[nextIdx];
-			if (merge.elementOffset + merge.elementCount == next.elementOffset) {
-				merge.elementCount += next.elementCount;
-				self.nextFreeIndices[freeSlot] = self.nextFreeIndices[nextIdx];
-				// invalidate the next block
-				next = { .elementCount = 0, .elementOffset = 0, };
-			}
-		}
-	}
+	self.allocatedBlocks[0].elementCount = self.elementCount;
+	self.freeListHeadIndex = 0u;
 }
 
 void srat::VirtualRangeAllocator::printAllocationStats() const
 {
-	VirtualRangeAllocatorData const & self = AllocatorData(*this, const);
-    printf("-- allocation stats --\n");
-    printf("   elementCount: %llu, maxBlockAllocations: %llu\n",
-        self.elementCount, self.maxBlockAllocations);
-    printf("   freeListHead: %u\n", self.freeListHeadIndex);
-
-    u32 idx = self.freeListHeadIndex;
-    u32 count = 0;
-    while (idx != skFreeListEnd) {
-        VirtualRangeBlockInternal const & block = self.allocatedBlocks[idx];
-        printf("   [%u] offset: %llu, count: %llu, next: %u, gen: %u\n",
-            idx,
-            block.elementOffset,
-            block.elementCount,
-            self.nextFreeIndices[idx],
-            self.generations[idx]
-        );
-        idx = self.nextFreeIndices[idx];
-        ++count;
-        if (count > self.maxBlockAllocations) {
-            printf("   !! free list corrupt\n");
-            break;
-        }
-    }
-    printf("   free block count: %u\n", count);
-
-    printf("   all slots:\n");
-    for (u64 i = 0; i < self.maxBlockAllocations; ++i) {
-        printf("   [%llu] offset: %llu, count: %llu, gen: %u, available: %d\n",
-            i,
-            self.allocatedBlocks[i].elementOffset,
-            self.allocatedBlocks[i].elementCount,
-            self.generations[i],
-            self.slotAvailable(i)
-        );
-    }
-    printf("-- end allocation stats --\n");
 }
 
 bool srat::VirtualRangeAllocator::empty() const
@@ -453,16 +421,12 @@ bool srat::VirtualRangeAllocator::empty() const
 		self.allocatedBlocks[freeHead]
 	);
 
-	// also check all generations are free
-	for (u64 it = 0; it < self.maxBlockAllocations; ++it) {
-		if (!self.slotAvailable(it)) {
-			return false;
-		}
-	}
-
 	return (
 		   firstBlock.elementCount == self.elementCount
 		&& firstBlock.elementOffset == 0
+		&& (firstBlock.generation&1) == 1 // free block
+		&& firstBlock.nextFreeIndex == skFreeListEnd
+		&& !firstBlock.allocated
 	);
 }
 

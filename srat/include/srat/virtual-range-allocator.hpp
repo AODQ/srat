@@ -16,7 +16,7 @@ struct VirtualRangeBlock
 {
 	u64 elementCount;
 	u64 elementOffset;
-	u64 handle; // opaque handle for validation
+	u64 handle; // opaque handle to identify the allocated block
 
 	// this will be invalid if the block was not allocated or has been freed
 	bool valid(VirtualRangeAllocator const & allocator) const;
@@ -31,7 +31,7 @@ struct VirtualRangeAllocateParams
 struct VirtualRangeCreateParams
 {
 	u64 elementCount;
-	u64 maxBlockAllocations;
+	u32 maxBlockAllocations;
 };
 
 struct VirtualRangeAllocator
@@ -40,13 +40,16 @@ struct VirtualRangeAllocator
 	VirtualRangeBlock allocate(VirtualRangeAllocateParams const & request);
 
 	// free a previously allocated range of elements
-	void free(VirtualRangeBlock const & block);
+	void free(u64 const handle);
 
 	// reset allocator to initial data, freeing all virtual memory ranges
 	void clear();
 
 	// create a new virtual range allocator
 	static VirtualRangeAllocator create(VirtualRangeCreateParams const & params);
+
+	bool isIndexAlive(u32 blockIndex) const;
+	u64 elementOffset(u32 blockIndex) const;
 
 	// check if the allocator has no free blocks available
 	bool empty() const;
@@ -71,7 +74,7 @@ private:
 	friend struct VirtualRangeBlock;
 
 	// internal data for the allocator
-	u64 _internalData[6];
+	u64 _internalData[4];
 };
 
 // this verifies all allocators are empty, used at program exit for leaks
