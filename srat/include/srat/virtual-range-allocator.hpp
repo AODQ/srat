@@ -12,6 +12,11 @@ namespace srat {
 
 struct VirtualRangeAllocator;
 
+enum struct VirtualRangeAllocationStrategy : u64 {
+	FreeList, // default strategy
+	Linear, // simple liaenr allocator for fast clear
+};
+
 struct VirtualRangeBlock
 {
 	u64 elementCount;
@@ -32,7 +37,9 @@ struct VirtualRangeCreateParams
 {
 	char const * debugName;
 	u64 elementCount;
+	// only used for free-list strategy
 	u32 maxBlockAllocations;
+	VirtualRangeAllocationStrategy strategy;
 };
 
 struct VirtualRangeAllocator
@@ -82,7 +89,7 @@ private:
 	friend struct VirtualRangeBlock;
 
 	// internal data for the allocator
-	u64 _internalData[6];
+	u64 _internalData[7];
 };
 
 // this verifies all allocators are empty, used at program exit for leaks

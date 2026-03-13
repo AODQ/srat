@@ -24,6 +24,7 @@ srat::HandlePool<Handle, InternalResource>::create(
 				.debugName = debugName,
 				.elementCount = maxHandles,
 				.maxBlockAllocations = maxHandles,
+				.strategy = VirtualRangeAllocationStrategy::FreeList,
 			}
 		),
 		resourceAllocations,

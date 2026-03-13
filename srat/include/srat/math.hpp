@@ -9,12 +9,40 @@
 static size_t constexpr skSimdLaneWidth = 8;
 
 // -----------------------------------------------------------------------------
+// -- i32 math
+// -----------------------------------------------------------------------------
+
+inline i32 i32_min(i32 const a, i32 const b) { return (a < b) ? a : b; }
+inline i32 i32_max(i32 const a, i32 const b) { return (a > b) ? a : b; }
+inline i32 i32_clamp(i32 const v, i32 const min, i32 const max) {
+	return i32_min(i32_max(v, min), max);
+}
+
+// -----------------------------------------------------------------------------
+// -- u32v2
+// -----------------------------------------------------------------------------
+
+struct u32v2 {
+	u32 x, y;
+};
+
+// -----------------------------------------------------------------------------
 // -- i32v2
 // -----------------------------------------------------------------------------
 
 struct i32v2 {
 	i32 x, y;
+
+	i32v2 operator /(i32v2 const s) const { return { x/s.x, y/s.y, }; }
+	i32v2 operator -(i32v2 const s) const { return { x-s.x, y-s.y, }; }
 };
+
+inline i32v2 i32v2_clamp(i32v2 const v, i32v2 const min, i32v2 const max) {
+	return {
+		i32_clamp(v.x, min.x, max.x),
+		i32_clamp(v.y, min.y, max.y),
+	};
+}
 
 // -----------------------------------------------------------------------------
 // -- f32v2
@@ -508,16 +536,6 @@ inline f32v4x8 f32m44x8_mul_vec(f32m44x8 const & m, f32v4x8 const & v) {
 	result.w = f32x8_fmadd(m.col[3].v[3], v.w, result.w);
 
 	return result;
-}
-
-// -----------------------------------------------------------------------------
-// -- i32 math
-// -----------------------------------------------------------------------------
-
-inline i32 i32_min(i32 const a, i32 const b) { return (a < b) ? a : b; }
-inline i32 i32_max(i32 const a, i32 const b) { return (a > b) ? a : b; }
-inline i32 i32_clamp(i32 const v, i32 const min, i32 const max) {
-	return i32_min(i32_max(v, min), max);
 }
 
 // -----------------------------------------------------------------------------

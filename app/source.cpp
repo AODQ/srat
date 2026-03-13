@@ -1,6 +1,7 @@
 #include <srat/types.hpp>
 #include <srat/image.hpp>
-#include <srat/rasterizer.hpp>
+// #include <srat/rasterizer.hpp>
+#include <srat/rasterizer-tiled.hpp>
 #include <srat/virtual-range-allocator.hpp>
 
 #include <raylib.h>
@@ -104,14 +105,34 @@ void draw_scene(
 		.uv = {},
 	};
 
-	srat::rasterize(
-		/*target=*/ target,
-		/*depthTarget=*/ depthTarget,
-		/*modelViewProjection=*/ modelViewProj,
-		/*attribs=*/ attributes,
-		/*indices=*/ (u32 *)kCubeTriInds,
-		/*vertexCount=*/ 12*3
+	static srat::TileGrid tileGrid = (
+		srat::tile_grid_create(srat::TileGridCreateInfo {
+			.imageWidth = kWindowDim.x,
+			.imageHeight = kWindowDim.y,
+			.maxTriangleIndices = 4096,
+		})
 	);
+
+	srat::rasterize_tiled(
+		srat::DrawInfo {
+			.targetColor = target,
+			.targetDepth = depthTarget,
+			.modelViewProjection = modelViewProj,
+			.vertexAttributes = attributes,
+			.indices = (u32 *)kCubeTriInds,
+			.vertexCount = 12*3,
+		},
+		tileGrid
+	);
+
+	// srat::rasterize(
+	// 	/*target=*/ target,
+	// 	/*depthTarget=*/ depthTarget,
+	// 	/*modelViewProjection=*/ modelViewProj,
+	// 	/*attribs=*/ attributes,
+	// 	/*indices=*/ (u32 *)kCubeTriInds,
+	// 	/*vertexCount=*/ 12*3
+	// );
 	}
 }
 

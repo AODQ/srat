@@ -11,24 +11,30 @@
 
 TEST_SUITE("virtual block allocator") {
 
-TEST_CASE("virtual block allocator sanity") {
+// -----------------------------------------------------------------------------
+// -- freelist allocation strategy
+// -----------------------------------------------------------------------------
+
+TEST_CASE("virtual block allocator [freelist] sanity") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto const allocator = (
 		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
 			.debugName = "test allocator",
 			.elementCount = 128,
 			.maxBlockAllocations = 16,
+			.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 		})
 	);
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block allocator one allocation") {
+TEST_CASE("virtual block allocator [freelist] one allocation") {
 	auto allocator = (
 		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
 			.debugName = "test allocator",
 			.elementCount = 128,
 			.maxBlockAllocations = 16,
+			.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 		})
 	);
 
@@ -39,12 +45,13 @@ TEST_CASE("virtual block allocator one allocation") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block allocator alloc+free+alloc+free") {
+TEST_CASE("virtual block allocator [freelist] alloc+free+alloc+free") {
 	auto allocator = (
 		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
 			.debugName = "test allocator",
 			.elementCount = 128,
 			.maxBlockAllocations = 16,
+			.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 		})
 	);
 
@@ -65,13 +72,14 @@ TEST_CASE("virtual block allocator alloc+free+alloc+free") {
 	}
 }
 
-TEST_CASE("virtual block allocate overflow") {
+TEST_CASE("virtual block allocate [freelist] overflow") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = (
 		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
 			.debugName = "test allocator",
 			.elementCount = 128,
 			.maxBlockAllocations = 16,
+			.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 		})
 	);
 
@@ -84,13 +92,14 @@ TEST_CASE("virtual block allocate overflow") {
 	CHECK(!block2.valid(allocator));
 }
 
-TEST_CASE("virtual block reset one chunk") {
+TEST_CASE("virtual block reset [freelist] one chunk") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = (
 		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
 			.debugName = "test allocator",
 			.elementCount = 128,
 			.maxBlockAllocations = 128,
+			.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 		})
 	);
 
@@ -100,13 +109,14 @@ TEST_CASE("virtual block reset one chunk") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block reset large chunks") {
+TEST_CASE("virtual block reset [freelist] large chunks") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = (
 		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
 			.debugName = "test allocator",
 			.elementCount = 128,
 			.maxBlockAllocations = 128,
+			.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 		})
 	);
 
@@ -118,13 +128,14 @@ TEST_CASE("virtual block reset large chunks") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block reset small chunks") {
+TEST_CASE("virtual block reset [freelist] small chunks") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = (
 		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
 			.debugName = "test allocator",
 			.elementCount = 128,
 			.maxBlockAllocations = 128,
+			.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 		})
 	);
 
@@ -136,13 +147,14 @@ TEST_CASE("virtual block reset small chunks") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block reset then reset") {
+TEST_CASE("virtual block reset [freelist] then reset") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = (
 		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
 			.debugName = "test allocator",
 			.elementCount = 128,
 			.maxBlockAllocations = 128,
+			.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 		})
 	);
 
@@ -160,13 +172,14 @@ TEST_CASE("virtual block reset then reset") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block allocator many allocations then free") {
+TEST_CASE("virtual block allocator [freelist] many allocations then free") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = (
 		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
 			.debugName = "test allocator",
 			.elementCount = 128,
 			.maxBlockAllocations = 16,
+			.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 		})
 	);
 
@@ -201,12 +214,13 @@ TEST_CASE("virtual block allocator many allocations then free") {
 	}
 }
 
-TEST_CASE("virtual block allocator alignment") {
+TEST_CASE("virtual block allocator [freelist] alignment") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = srat::VirtualRangeAllocator::create({
 		.debugName = "test allocator",
 		.elementCount = 128,
 		.maxBlockAllocations = 16,
+		.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 	});
 
 	// alloc 1 element to misalign the next free block offset to 1
@@ -246,7 +260,7 @@ TEST_CASE("virtual block allocator alignment") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block allocator stress test") {
+TEST_CASE("virtual block allocator [freelist] stress test") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 
 	static constexpr size_t kElementCount = 1024;
@@ -257,6 +271,7 @@ TEST_CASE("virtual block allocator stress test") {
 		.debugName = "test allocator",
 		.elementCount = kElementCount,
 		.maxBlockAllocations = kMaxBlocks,
+			.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 	});
 
 	std::mt19937 rng(42);
@@ -321,12 +336,13 @@ TEST_CASE("virtual block allocator stress test") {
 	}
 }
 
-TEST_CASE("virtual block allocator exact fit after fragmentation") {
+TEST_CASE("virtual block allocator [freelist] exact fit after fragmentation") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = srat::VirtualRangeAllocator::create({
 		.debugName = "test allocator",
 		.elementCount = 32,
 		.maxBlockAllocations = 16,
+		.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 	});
 
 	// alloc A and B filling the range
@@ -352,12 +368,13 @@ TEST_CASE("virtual block allocator exact fit after fragmentation") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block allocator alignment already satisfied") {
+TEST_CASE("virtual block allocator [freelist] alignment already satisfied") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = srat::VirtualRangeAllocator::create({
 		.debugName = "test allocator",
 		.elementCount = 128,
 		.maxBlockAllocations = 16,
+		.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 	});
 
 	// free block starts at offset 0, alignment 8 is already satisfied
@@ -378,12 +395,13 @@ TEST_CASE("virtual block allocator alignment already satisfied") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block allocator block invalid after clear") {
+TEST_CASE("virtual block allocator [freelist] block invalid after clear") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = srat::VirtualRangeAllocator::create({
 		.debugName = "test allocator",
 		.elementCount = 128,
 		.maxBlockAllocations = 16,
+		.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 	});
 
 	auto a = allocator.allocate({ .elementCount = 8 });
@@ -404,12 +422,13 @@ TEST_CASE("virtual block allocator block invalid after clear") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block allocator alternating free order") {
+TEST_CASE("virtual block allocator [freelist] alternating free order") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = srat::VirtualRangeAllocator::create({
 		.debugName = "test allocator",
 		.elementCount = 64,
 		.maxBlockAllocations = 16,
+		.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 	});
 
 	// alloc A B C D contiguously
@@ -436,12 +455,13 @@ TEST_CASE("virtual block allocator alternating free order") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block allocator block invalid after free") {
+TEST_CASE("virtual block allocator [freelist] block invalid after free") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = srat::VirtualRangeAllocator::create({
 		.debugName = "test allocator",
 		.elementCount = 128,
 		.maxBlockAllocations = 16,
+		.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 	});
 
 	auto a = allocator.allocate({ .elementCount = 8 });
@@ -460,12 +480,13 @@ TEST_CASE("virtual block allocator block invalid after free") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block allocator stale block after reallocation") {
+TEST_CASE("virtual block allocator [freelist] stale block after reallocation") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = srat::VirtualRangeAllocator::create({
 		.debugName = "test allocator",
 		.elementCount = 128,
 		.maxBlockAllocations = 16,
+		.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 	});
 
 	auto old = allocator.allocate({ .elementCount = 128 });
@@ -483,12 +504,13 @@ TEST_CASE("virtual block allocator stale block after reallocation") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block allocator alignment exact fit to end") {
+TEST_CASE("virtual block allocator [freelist] alignment exact fit to end") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = srat::VirtualRangeAllocator::create({
 		.debugName = "test allocator",
 		.elementCount = 128,
 		.maxBlockAllocations = 16,
+		.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 	});
 
 	// misalign by 1 then allocate aligned block that fills exactly to end
@@ -513,12 +535,13 @@ TEST_CASE("virtual block allocator alignment exact fit to end") {
 	CHECK(allocator.empty());
 }
 
-TEST_CASE("virtual block allocator elementCount preserved") {
+TEST_CASE("virtual block allocator [freelist] elementCount preserved") {
 	CHECK(srat::virtual_range_allocator_all_empty());
 	auto allocator = srat::VirtualRangeAllocator::create({
 		.debugName = "test allocator",
 		.elementCount = 128,
 		.maxBlockAllocations = 16,
+		.strategy = srat::VirtualRangeAllocationStrategy::FreeList,
 	});
 
 	auto a = allocator.allocate({ .elementCount = 7 });
@@ -576,6 +599,224 @@ TEST_CASE("virtual block allocator elementCount preserved") {
 	allocator.free(b.handle);
 	allocator.free(c.handle);
 	CHECK(allocator.empty());
+}
+
+// -----------------------------------------------------------------------------
+// -- linear allocation strategy
+// -----------------------------------------------------------------------------
+
+TEST_CASE("virtual block allocator [linear] sanity") {
+	CHECK(srat::virtual_range_allocator_all_empty());
+	auto const allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.debugName = "test allocator",
+			.elementCount = 128,
+			.maxBlockAllocations = 0,
+			.strategy = srat::VirtualRangeAllocationStrategy::Linear,
+		})
+	);
+	CHECK(allocator.empty());
+}
+
+TEST_CASE("virtual block allocator [linear] one allocation") {
+	auto allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.debugName = "test allocator",
+			.elementCount = 128,
+			.maxBlockAllocations = 0,
+			.strategy = srat::VirtualRangeAllocationStrategy::Linear,
+		})
+	);
+
+	auto block = allocator.allocate({ .elementCount = 128 });
+	CHECK(block.elementCount == 128);
+	CHECK(block.elementOffset == 0);
+	CHECK(!allocator.empty());
+}
+
+TEST_CASE("virtual block allocator [linear] sequential offsets") {
+	auto allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.debugName = "test allocator",
+			.elementCount = 128,
+			.maxBlockAllocations = 0,
+			.strategy = srat::VirtualRangeAllocationStrategy::Linear,
+		})
+	);
+
+	auto a = allocator.allocate({ .elementCount = 7 });
+	auto b = allocator.allocate({ .elementCount = 13 });
+	auto c = allocator.allocate({ .elementCount = 32 });
+	CHECK(a.elementOffset == 0);
+	CHECK(a.elementCount == 7);
+	CHECK(b.elementOffset == 7);
+	CHECK(b.elementCount == 13);
+	CHECK(c.elementOffset == 20);
+	CHECK(c.elementCount == 32);
+}
+
+TEST_CASE("virtual block allocator [linear] overflow") {
+	CHECK(srat::virtual_range_allocator_all_empty());
+	auto allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.debugName = "test allocator",
+			.elementCount = 128,
+			.maxBlockAllocations = 0,
+			.strategy = srat::VirtualRangeAllocationStrategy::Linear,
+		})
+	);
+
+	auto a = allocator.allocate({ .elementCount = 128 });
+	CHECK(a.elementCount == 128);
+
+	// no space left
+	auto b = allocator.allocate({ .elementCount = 1 });
+	CHECK(b.elementCount == 0);
+	CHECK(b.handle == 0);
+
+	// too large from the start
+	allocator.clear();
+	auto c = allocator.allocate({ .elementCount = 129 });
+	CHECK(c.elementCount == 0);
+	CHECK(c.handle == 0);
+}
+
+TEST_CASE("virtual block allocator [linear] clear resets") {
+	CHECK(srat::virtual_range_allocator_all_empty());
+	auto allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.debugName = "test allocator",
+			.elementCount = 128,
+			.maxBlockAllocations = 0,
+			.strategy = srat::VirtualRangeAllocationStrategy::Linear,
+		})
+	);
+
+	for (u32 i = 0; i < 16; ++i) {
+		auto block = allocator.allocate({ .elementCount = 8 });
+		CHECK(block.elementCount == 8);
+	}
+	CHECK(!allocator.empty());
+
+	allocator.clear();
+	CHECK(allocator.empty());
+
+	// full capacity available again after clear
+	auto block = allocator.allocate({ .elementCount = 128 });
+	CHECK(block.elementCount == 128);
+	CHECK(block.elementOffset == 0);
+}
+
+TEST_CASE("virtual block allocator [linear] clear then reuse") {
+	CHECK(srat::virtual_range_allocator_all_empty());
+	auto allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.debugName = "test allocator",
+			.elementCount = 128,
+			.maxBlockAllocations = 0,
+			.strategy = srat::VirtualRangeAllocationStrategy::Linear,
+		})
+	);
+
+	// fill, clear, fill again — offsets should restart from 0
+	for (u32 i = 0; i < 16; ++i) {
+		allocator.allocate({ .elementCount = 8 });
+	}
+	allocator.clear();
+
+	auto a = allocator.allocate({ .elementCount = 10 });
+	auto b = allocator.allocate({ .elementCount = 20 });
+	CHECK(a.elementOffset == 0);
+	CHECK(a.elementCount == 10);
+	CHECK(b.elementOffset == 10);
+	CHECK(b.elementCount == 20);
+}
+
+TEST_CASE("virtual block allocator [linear] free is no-op") {
+	CHECK(srat::virtual_range_allocator_all_empty());
+	auto allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.debugName = "test allocator",
+			.elementCount = 128,
+			.maxBlockAllocations = 0,
+			.strategy = srat::VirtualRangeAllocationStrategy::Linear,
+		})
+	);
+
+	auto a = allocator.allocate({ .elementCount = 32 });
+	auto b = allocator.allocate({ .elementCount = 32 });
+
+	// free should not reclaim space — next alloc continues from where we left off
+	allocator.free(a.handle);
+	allocator.free(b.handle);
+
+	auto c = allocator.allocate({ .elementCount = 32 });
+	CHECK(c.elementOffset == 64); // not 0 or 32
+	CHECK(c.elementCount == 32);
+}
+
+TEST_CASE("virtual block allocator [linear] alignment") {
+	CHECK(srat::virtual_range_allocator_all_empty());
+	auto allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.debugName = "test allocator",
+			.elementCount = 128,
+			.maxBlockAllocations = 0,
+			.strategy = srat::VirtualRangeAllocationStrategy::Linear,
+		})
+	);
+
+	// misalign by 1
+	auto a = allocator.allocate({ .elementCount = 1 });
+	CHECK(a.elementOffset == 0);
+
+	// next alloc aligned to 8 should land at offset 8
+	auto b = allocator.allocate({ .elementCount = 16, .elementAlignment = 8 });
+	CHECK(b.elementOffset == 8);
+	CHECK(b.elementCount == 16);
+
+	// next unaligned alloc continues right after
+	auto c = allocator.allocate({ .elementCount = 1 });
+	CHECK(c.elementOffset == 24);
+}
+
+TEST_CASE("virtual block allocator [linear] alignment overflow") {
+	CHECK(srat::virtual_range_allocator_all_empty());
+	auto allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.debugName = "test allocator",
+			.elementCount = 16,
+			.maxBlockAllocations = 0,
+			.strategy = srat::VirtualRangeAllocationStrategy::Linear,
+		})
+	);
+
+	// alloc 1 to misalign
+	allocator.allocate({ .elementCount = 1 });
+
+	// aligned alloc: aligns to 8 (offset 8) + 10 elements = 18 > 16
+	auto b = allocator.allocate({ .elementCount = 10, .elementAlignment = 8 });
+	CHECK(b.elementCount == 0);
+	CHECK(b.handle == 0);
+}
+
+TEST_CASE("virtual block allocator [linear] elementCount preserved") {
+	CHECK(srat::virtual_range_allocator_all_empty());
+	auto allocator = (
+		srat::VirtualRangeAllocator::create(srat::VirtualRangeCreateParams {
+			.debugName = "test allocator",
+			.elementCount = 128,
+			.maxBlockAllocations = 0,
+			.strategy = srat::VirtualRangeAllocationStrategy::Linear,
+		})
+	);
+
+	auto a = allocator.allocate({ .elementCount = 7 });
+	auto b = allocator.allocate({ .elementCount = 13 });
+	auto c = allocator.allocate({ .elementCount = 32 });
+	CHECK(a.elementCount == 7);
+	CHECK(b.elementCount == 13);
+	CHECK(c.elementCount == 32);
 }
 
 } // -- end virtual block allocator test suite

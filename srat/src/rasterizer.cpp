@@ -1,23 +1,5 @@
 #include <srat/rasterizer.hpp>
 
-namespace {
-
-u8 const * attr_fetch_ptr(
-	srat::VertexAttributeDescriptor const & desc,
-	u32 vertexIndex
-) {
-	return (u8 *)desc.data + desc.byteOffset + vertexIndex * desc.byteStride;
-}
-
-f32v4 attr_fetch_f32v4(
-	srat::VertexAttributeDescriptor const & desc,
-	u32 vertexIndex
-) {
-	return *(f32v4 const *)attr_fetch_ptr(desc, vertexIndex);
-}
-
-} // namespace
-
 void srat::rasterize(
 	srat::Image const & target,
 	srat::Image const & depthTarget,

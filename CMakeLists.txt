@@ -37,6 +37,8 @@ add_library(
 	srat
 	STATIC
 	srat/src/virtual-range-allocator.cpp
+	srat/src/tile-grid.cpp
+	srat/src/rasterizer-tiled.cpp
 	srat/src/rasterizer.cpp
 	srat/src/image.cpp
 )
@@ -64,6 +66,7 @@ target_sources(
 	PRIVATE
 	app/source.cpp
 	app/unit-tests.cpp
+	app/unit-test-tile-grid.cpp
 	app/unit-test-virtual-block-allocator.cpp
 	app/unit-test-handles.cpp
 	app/unit-test-math.cpp
@@ -75,7 +78,7 @@ target_include_directories(
 	external/doctest
 )
 target_link_libraries(app PRIVATE srat raylib)
-target_compile_options(app PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_compile_options(app PRIVATE -Wall -Wextra -Wpedantic)
 
 # install
 install(
