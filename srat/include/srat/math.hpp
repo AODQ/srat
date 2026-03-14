@@ -632,8 +632,8 @@ inline f32 f32v2_triangle_area(
 
 inline i32v2 f32v4_clip_to_screen(f32v4 const & v, i32v2 const & screenSize) {
 	return i32v2 {
-		.x = (i32)(( v.x/20.0 * 0.5f + 0.5f) * (f32)screenSize.x),
-		.y = (i32)((-v.y/20.0 * 0.5f + 0.5f) * (f32)screenSize.y),
+		.x = (i32)(( v.x/v.w * 0.5f + 0.5f) * (f32)screenSize.x),
+		.y = (i32)((-v.y/v.w * 0.5f + 0.5f) * (f32)screenSize.y),
 	};
 };
 

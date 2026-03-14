@@ -1,5 +1,6 @@
 #include <srat/rasterizer.hpp>
 
+
 void srat::rasterize(
 	srat::Image const & target,
 	srat::Image const & depthTarget,

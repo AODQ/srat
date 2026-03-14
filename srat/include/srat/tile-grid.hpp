@@ -31,6 +31,8 @@ namespace srat {
 	TileGrid tile_grid_create(TileGridCreateInfo const & createInfo);
 	void tile_grid_destroy(TileGrid const & grid);
 
+	u32v2 tile_grid_tile_count(TileGrid const & grid);
+
 	// call once per frame before binning
 	void tile_grid_clear(TileGrid & grid);
 

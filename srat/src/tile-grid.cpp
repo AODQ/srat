@@ -44,6 +44,12 @@ void srat::tile_grid_destroy(srat::TileGrid const & grid) {
 	sTileGridPool.free(grid);
 }
 
+u32v2 srat::tile_grid_tile_count(TileGrid const & grid) {
+	ImplTileGrid * impl = sTileGridPool.get(grid);
+	SRAT_ASSERT(impl != nullptr);
+	return u32v2(impl->tileCountX, impl->tileCountY);
+}
+
 void srat::tile_grid_clear(TileGrid & grid) {
 	ImplTileGrid * impl = sTileGridPool.get(grid);
 	SRAT_ASSERT(impl != nullptr);
@@ -67,7 +73,9 @@ void srat::tile_grid_bin_triangle(
 		u32 * oldIndices = bin.triangleIndices;
 		// -- allocate new storage for triangle indices
 		u32 const newCapacity = (
-			(bin.triangleCapacity == 0) ? 32 : (bin.triangleCapacity * 2)
+			  (bin.triangleCapacity == 0)
+			? impl.initialBinCapacity
+			: (bin.triangleCapacity * 2)
 		);
 		bin.triangleIndices = (
 			impl.binAllocator.allocate(newCapacity)
@@ -116,6 +124,10 @@ void srat::tile_grid_bin_triangle_bbox(
 			i32v2(impl.tileCountX, impl.tileCountY) - i32v2(1, 1)
 		)
 	);
+	if (maxTile.x < minTile.x || maxTile.y < minTile.y) {
+		// triangle bbox does not intersect grid, skip binning
+		return;
+	}
 	for (i32 y = minTile.y; y <= maxTile.y; ++y)
 	for (i32 x = minTile.x; x <= maxTile.x; ++x) {
 		tile_grid_bin_triangle(grid, u32v2(x, y), triangleIndex);
@@ -123,14 +135,13 @@ void srat::tile_grid_bin_triangle_bbox(
 }
 
 srat::TileBin & srat::tile_grid_bin(TileGrid & grid, u32v2 tile) {
-	ImplTileGrid * impl = sTileGridPool.get(grid);
-	return impl->bins[(tile.y * impl->tileCountX) + tile.x];
+	ImplTileGrid & impl = *sTileGridPool.get(grid);
+	return impl.bins[(tile.y * impl.tileCountX) + tile.x];
 }
 
 srat::TileBin const & srat::tile_grid_bin(TileGrid const & grid, u32v2 tile) {
-	ImplTileGrid * impl = sTileGridPool.get(grid);
-	SRAT_ASSERT(impl != nullptr);
-	u32 const tileIndex = (tile.y * impl->tileCountX) + tile.x;
-	SRAT_ASSERT(tileIndex < (impl->tileCountX * impl->tileCountY));
-	return impl->bins[tileIndex];
+	ImplTileGrid & impl = *sTileGridPool.get(grid);
+	u32 const tileIndex = (tile.y * impl.tileCountX) + tile.x;
+	SRAT_ASSERT(tileIndex < (impl.tileCountX * impl.tileCountY));
+	return impl.bins[tileIndex];
 }

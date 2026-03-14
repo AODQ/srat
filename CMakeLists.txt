@@ -47,6 +47,7 @@ target_include_directories(
 	PUBLIC
 	#${IMGUI_DIR}
 	srat/include
+	external/thread-pool/include
 )
 
 target_compile_options(

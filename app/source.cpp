@@ -5,6 +5,8 @@
 #include <srat/virtual-range-allocator.hpp>
 
 #include <raylib.h>
+
+#include <array>
 #include <cstdint>
 
 static constexpr i32v2 kWindowDim = { 512, 512 };
@@ -26,6 +28,7 @@ void raylib_shutdown()
 // just a placeholder function
 void draw_scene(
 	f32 const deltaTime,
+	srat::TileGrid & tileGrid,
 	srat::Image const & target,
 	srat::Image const & depthTarget
 )
@@ -74,7 +77,7 @@ void draw_scene(
 	};
 
 	// build modelviewproj
-	f32 const time = fmodf(deltaTime, 10.f);
+	f32 const time = fmodf(0.0f, 10.f);
 	for (i32 cube = 0; cube < 1; ++cube) {
 	f32m44 const model = (
 		  f32m44_rotate_y(time * 0.5f)
@@ -83,9 +86,9 @@ void draw_scene(
 			(cube - 2) * 1.5f, 0.f, 0.f
 		)
 	);
-	f32m44 const view = f32m44_translate(0.f, 0.f, -5.0f);
+	f32m44 const view = f32m44_translate(0.f, 0.f, -8.0f);
 	f32m44 const proj = f32m44_perspective(
-		25.f * (3.14159265f / 180.f), /*aspect=*/ 1.0f, 0.1f, 10.0f
+		90.f * (3.14159265f / 180.f), /*aspect=*/ 1.0f, 0.1f, 100.0f
 	);
 	f32m44 const modelViewProj = proj * view * model;
 
@@ -104,14 +107,6 @@ void draw_scene(
 		.normal = {},
 		.uv = {},
 	};
-
-	static srat::TileGrid tileGrid = (
-		srat::tile_grid_create(srat::TileGridCreateInfo {
-			.imageWidth = kWindowDim.x,
-			.imageHeight = kWindowDim.y,
-			.maxTriangleIndices = 4096,
-		})
-	);
 
 	srat::rasterize_tiled(
 		srat::DrawInfo {
@@ -162,6 +157,15 @@ i32 main(i32 const argc, char const * const * argv)
 		})
 	);
 
+
+	srat::TileGrid tileGrid = (
+		srat::tile_grid_create(srat::TileGridCreateInfo {
+			.imageWidth = kWindowDim.x,
+			.imageHeight = kWindowDim.y,
+			.maxTriangleIndices = 4096,
+		})
+	);
+
 	while (!WindowShouldClose())
 	{
 		BeginDrawing();
@@ -169,17 +173,40 @@ i32 main(i32 const argc, char const * const * argv)
 
 		// -- here is the srat hookup
 		// just draw triangle from 0,0->kWindowDim,0->256,kWindowDim
-		draw_scene(GetTime(), sratImage, sratImageDepth);
+		draw_scene(GetTime(), tileGrid, sratImage, sratImageDepth);
 
 		// lastly copy srat data into raylib texture
 		UpdateTexture(tex, srat::image_data(sratImage));
 
 		DrawTexture(tex, 0, 0, WHITE);
-		DrawFPS(10, 10);
+		static std::array<float, 16> timings {};
+		static float timeSinceLastUpdate = 0.f;
+		timeSinceLastUpdate += GetFrameTime();
+		static float timeSinceLastUpdateTime = 0.f;
+		{
+			// convert to ms and store in timings for averaging
+			for (size_t i = timings.size() - 1; i > 0; --i) {
+				timings[i] = timings[i-1];
+			}
+			timings[0] = GetFrameTime() * 1000.0f;
+			float avgTime = 0.f;
+			for (float t : timings) {
+				avgTime += t;
+			}
+			avgTime /= timings.size();
+			if (timeSinceLastUpdate >= 0.5f) {
+				timeSinceLastUpdate = 0.f;
+				timeSinceLastUpdateTime = avgTime;
+			}
+			char buf[32];
+			snprintf(buf, sizeof(buf), "Time: %.2f", timeSinceLastUpdateTime);
+			DrawText(buf, 10, 30, 20, WHITE);
+		}
 		EndDrawing();
 	}
 
 	// srat destroy
+	srat::tile_grid_destroy(tileGrid);
 	srat::image_destroy(sratImage);
 	srat::image_destroy(sratImageDepth);
 	srat::virtual_range_allocator_verify_all_empty();
