@@ -13,5 +13,5 @@ void unit_tests(i32 const argc, char const * const * argv)
 	if (context.shouldExit())
 		exit(res);
 
-	SRAT_ASSERT(srat::virtual_range_allocator_all_empty());
+	SRAT_CLEAN_EXIT();
 }

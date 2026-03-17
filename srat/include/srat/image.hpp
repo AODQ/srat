@@ -21,7 +21,7 @@ enum struct Format {
 
 
 struct ImageCreateInfo {
-	i32v2 dim;
+	u32v2 dim;
 	Layout layout;
 	Format format;
 };
@@ -29,7 +29,7 @@ struct ImageCreateInfo {
 Image image_create(ImageCreateInfo const & createInfo);
 void image_destroy(Image const &image);
 
-i32v2 image_dim(Image const & image);
+u32v2 image_dim(Image const & image);
 u8 * image_data(Image const & image);
 
 

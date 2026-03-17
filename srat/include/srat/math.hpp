@@ -484,6 +484,10 @@ inline f32m44x8 f32m44x8_broadcast(float const m[16]) {
 	#undef M
 };
 
+inline f32m44x8 f32m44x8_broadcast(f32m44 const & m) {
+	return f32m44x8_broadcast(m.m);
+};
+
 // reads the matrix back into memory
 inline void f32m44x8_store(f32m44x8 const & m, float out[16]) {
 	out[0]  = f32x8_lane0(m.col[0].v[0]);
@@ -630,7 +634,7 @@ inline f32 f32v2_triangle_area(
 	);
 }
 
-inline i32v2 f32v4_clip_to_screen(f32v4 const & v, i32v2 const & screenSize) {
+inline i32v2 f32v4_clip_to_screen(f32v4 const & v, u32v2 const & screenSize) {
 	return i32v2 {
 		.x = (i32)(( v.x/v.w * 0.5f + 0.5f) * (f32)screenSize.x),
 		.y = (i32)((-v.y/v.w * 0.5f + 0.5f) * (f32)screenSize.y),

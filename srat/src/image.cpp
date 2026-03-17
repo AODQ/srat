@@ -12,7 +12,7 @@ namespace {
 
 struct ImplImage {
 	std::vector<u8> data;
-	i32v2 dim;
+	u32v2 dim;
 	srat::Layout layout;
 	srat::Format format;
 };
@@ -53,7 +53,7 @@ void srat::image_destroy(Image const & image) {
 	sImagePool.free(image);
 }
 
-i32v2 srat::image_dim(Image const & image) {
+u32v2 srat::image_dim(Image const & image) {
 	ImplImage * impl = sImagePool.get(image);
 	SRAT_ASSERT(impl != nullptr);
 	return impl->dim;

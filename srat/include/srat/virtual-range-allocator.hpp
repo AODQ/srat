@@ -68,7 +68,7 @@ struct VirtualRangeAllocator
 	// check if the allocator has no free blocks available
 	bool empty() const;
 
-#if SRAT_DEBUG
+#if SRAT_DEBUG()
 	void printAllocationStats() const;
 	char const * debugName() const;
 #endif
@@ -93,7 +93,7 @@ private:
 };
 
 // this verifies all allocators are empty, used at program exit for leaks
-#if SRAT_DEBUG
+#if SRAT_DEBUG()
 bool virtual_range_allocator_all_empty();
 void virtual_range_allocator_verify_all_empty();
 #endif

@@ -75,7 +75,7 @@ static_assert(
 
 static constexpr u32 skFreeListEnd = UINT32_MAX;
 
-#if SRAT_DEBUG
+#if SRAT_DEBUG()
 std::set<srat::VirtualRangeAllocator *> sAllocators;
 #endif
 
@@ -198,10 +198,10 @@ srat::VirtualRangeAllocator srat::VirtualRangeAllocator::create(
 		break;
 	}
 
-#if SRAT_DEBUG
+#if SRAT_DEBUG()
 	self.debugName = params.debugName; // TODO alloc+copy this
 #endif
-#if SRAT_DEBUG
+#if SRAT_DEBUG()
 	// track the allocator for debugging purposes
 	sAllocators.insert(&allocator);
 #endif
@@ -250,7 +250,7 @@ void srat::VirtualRangeAllocator::moveFrom(VirtualRangeAllocator && o)
 	VirtualRangeAllocatorData & otherSelf = AllocatorData(o);
 
 	// apply the move constructor to the internal debugging data
-#if SRAT_DEBUG
+#if SRAT_DEBUG()
 	{
 		auto it = sAllocators.find(&o);
 		SRAT_ASSERT(it != sAllocators.end());
@@ -295,7 +295,7 @@ srat::VirtualRangeAllocator::~VirtualRangeAllocator()
 	if (self.strategy == VirtualRangeAllocationStrategy::FreeList) {
 		delete[] self.freelist.allocatedBlocks;
 	}
-#if SRAT_DEBUG
+#if SRAT_DEBUG()
 	auto it = sAllocators.find(this);
 	if (it != sAllocators.end()) {
 		sAllocators.erase(it);
@@ -318,6 +318,16 @@ srat::VirtualRangeBlock virtual_range_linear_allocate(
 		srat::alignUp(self.linear.nextIndex, (u32)request.elementAlignment)
 	);
 	if (allocIndex + request.elementCount > self.elementCount) {
+		printf(
+			"VirtualRangeAllocator '%s' out of memory: "
+			"requested %zu elements with alignment %zu, "
+			"however container is currently %zu/%zu\n",
+			self.debugName,
+			request.elementCount,
+			request.elementAlignment,
+			(u64)allocIndex,
+			self.elementCount
+		);
 		// not enough space to satisfy allocation
 		return srat::VirtualRangeBlock {
 			.elementCount = 0,
@@ -596,6 +606,7 @@ void srat::VirtualRangeAllocator::clear()
 	}
 }
 
+#if SRAT_DEBUG()
 void srat::VirtualRangeAllocator::printAllocationStats() const
 {
 }
@@ -604,6 +615,7 @@ char const * srat::VirtualRangeAllocator::debugName() const
 {
 	return AllocatorData(*this, const).debugName;
 }
+#endif
 
 bool srat::VirtualRangeAllocator::empty() const
 {
@@ -617,7 +629,7 @@ bool srat::VirtualRangeAllocator::empty() const
 	exit(1); // should never reach here
 }
 
-#if SRAT_DEBUG
+#if SRAT_DEBUG()
 bool srat::virtual_range_allocator_all_empty()
 {
 	for (auto allocator : sAllocators) {

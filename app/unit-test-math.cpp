@@ -702,7 +702,7 @@ TEST_CASE("f32v2_triangle_area degenerate") {
 
 TEST_CASE("f32v4_clip_to_screen center of screen") {
 	// NDC (0,0) should map to center pixel
-	i32v2 dim = { 512, 512 };
+	u32v2 dim = { 512, 512 };
 	// note: w-divide must be done before calling — pass NDC directly as x/y, w=1
 	f32v4 ndc = { 0.f, 0.f, 0.f, 1.f };
 	i32v2 s = f32v4_clip_to_screen(ndc, dim);

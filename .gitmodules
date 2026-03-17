@@ -7,3 +7,18 @@
 [submodule "build/external/doctest"]
 	path = build/external/doctest
 	url = https://github.com/doctest/doctest
+[submodule "external/imgui"]
+	path = external/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "external/rlImGui"]
+	path = external/rlImGui
+	url = https://github.com/raylib-extras/rlImGui.git
+[submodule "external/tracy"]
+	path = external/tracy
+	url = https://github.com/wolfpld/tracy
+[submodule "external/extern/oneTBB"]
+	path = external/extern/oneTBB
+	url = https://github.com/oneapi-src/oneTBB.git
+[submodule "external/oneTBB"]
+	path = external/oneTBB
+	url = https://github.com/oneapi-src/oneTBB.git

@@ -29,14 +29,9 @@ inline T alignUp(T value, T alignment)
 
 // logging utility
 
-#if defined(_DEBUG) || defined(DEBUG) || true
-	#define SRAT_DEBUG 1
-#else
-	#define SRAT_DEBUG 0
-#endif
+#include "config.hpp"
 
-
-#if SRAT_DEBUG
+#if SRAT_DEBUG()
 #include <cstdio>
 #include <cstdlib>
 #define SRAT_ASSERT(expr) do { \
