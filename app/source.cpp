@@ -1,8 +1,9 @@
 #include <cstdio>
-#include <srat/types.hpp>
+
+#include <srat/command-buffer.hpp>
 #include <srat/image.hpp>
-// #include <srat/rasterizer.hpp>
-#include <srat/rasterizer-tiled.hpp>
+#include <srat/rasterizer-binning.hpp>
+#include <srat/types.hpp>
 #include <srat/virtual-range-allocator.hpp>
 
 #include <raylib.h>
@@ -34,7 +35,6 @@ void raylib_shutdown()
 // just a placeholder function
 void draw_scene(
 	f32 const deltaTime,
-	srat::TileGrid & tileGrid,
 	srat::Image const & target,
 	srat::Image const & depthTarget
 )
@@ -54,22 +54,22 @@ void draw_scene(
 		*depth = UINT16_MAX; // max depth
 	}
 
-	static constexpr f32v4 kCubeVerts[8] = {
-		{ -1.f, -1.f, -1.f, 1.f },
-		{  1.f, -1.f, -1.f, 1.f },
-		{  1.f,  1.f, -1.f, 1.f },
-		{ -1.f,  1.f, -1.f, 1.f },
-		{ -1.f, -1.f,  1.f, 1.f },
-		{  1.f, -1.f,  1.f, 1.f },
-		{  1.f,  1.f,  1.f, 1.f },
-		{ -1.f,  1.f,  1.f, 1.f },
+	static constexpr f32v3 kCubeVerts[8] = {
+		{ -1.f, -1.f, -1.f, },
+		{  1.f, -1.f, -1.f, },
+		{  1.f,  1.f, -1.f, },
+		{ -1.f,  1.f, -1.f, },
+		{ -1.f, -1.f,  1.f, },
+		{  1.f, -1.f,  1.f, },
+		{  1.f,  1.f,  1.f, },
+		{ -1.f,  1.f,  1.f, },
 	};
 
-	static constexpr f32v4 kCubeTris[] = {
-		{ 1.f, 0.f, 0.f, 1.f }, { 1.f, 0.f, 0.f, 1.f }, { 1.f, 0.f, 0.f, 1.f },
-		{ 0.f, 1.f, 0.f, 1.f }, { 0.f, 1.f, 0.f, 1.f }, { 0.f, 1.f, 0.f, 1.f },
-		{ 0.f, 0.f, 1.f, 1.f }, { 0.f, 0.f, 1.f, 1.f }, { 0.f, 0.f, 1.f, 1.f },
-		{ 1.f, 1.f, 0.f, 1.f }, { 1.f, 1.f, 0.f, 1.f }, { 1.f, 1.f, 0.f, 1.f },
+	static constexpr f32v3 kCubeTris[] = {
+		{ 1.f, 0.f, 0.f, }, { 1.f, 0.f, 0.f, }, { 1.f, 0.f, 0.f, },
+		{ 0.f, 1.f, 0.f, }, { 0.f, 1.f, 0.f, }, { 0.f, 1.f, 0.f, },
+		{ 0.f, 0.f, 1.f, }, { 0.f, 0.f, 1.f, }, { 0.f, 0.f, 1.f, },
+		{ 1.f, 1.f, 0.f, }, { 1.f, 1.f, 0.f, }, { 1.f, 1.f, 0.f, },
 	};
 
 	static constexpr u32 kCubeTriInds[12*3] = {
@@ -85,9 +85,9 @@ void draw_scene(
 	f32 const time = animationEnabled ? fmodf(deltaTime, 1000.f) : 0.f;
 	srat::CommandBuffer cmdBuf = srat::command_buffer_create();
 	srat::command_buffer_bind_framebuffer(cmdBuf, target, depthTarget);
-	static constexpr i32 kGridX = 32;
-	static constexpr i32 kGridY = 32;
-	static constexpr i32 kGridZ = 32;
+	static constexpr i32 kGridX = 1;
+	static constexpr i32 kGridY = 1;
+	static constexpr i32 kGridZ = 1;
 	// kGridX * kGridY * kGridZ = 16384
 
 	for (i32 cube = 0; cube < kGridX * kGridY * kGridZ; ++cube) {
@@ -103,7 +103,7 @@ void draw_scene(
 			(cz - kGridZ * 0.5f) * 2.5f
 		)
 	);
-	f32m44 const view = f32m44_translate(0.f, 0.f, -100.0f);
+	f32m44 const view = f32m44_translate(0.f, 0.f, -10.0f);
 	f32m44 const proj = f32m44_perspective(
 		90.f * (3.14159265f / 180.f), /*aspect=*/ 1.0f, 0.1f, 5000.0f
 	);
@@ -112,12 +112,10 @@ void draw_scene(
 	// -- rasterize 12 triangles
 	srat::VertexAttributes const attributes = {
 		.position = {
-			.byteOffset = 0,
 			.byteStride = sizeof(f32v4),
 			.data = (u8 *)kCubeVerts,
 		},
 		.color = {
-			.byteOffset = 0,
 			.byteStride = sizeof(f32v4),
 			.data = (u8 *)kCubeTris,
 		},
@@ -132,7 +130,7 @@ void draw_scene(
 		.indexCount = 12*3,
 	});
 	}
-	srat::command_buffer_submit(cmdBuf, tileGrid);
+	srat::command_buffer_submit(cmdBuf);
 	srat::command_buffer_destroy(cmdBuf);
 }
 
@@ -166,12 +164,6 @@ i32 main(i32 const argc, char const * const * argv)
 		})
 	);
 
-	srat::TileGrid tileGrid = tile_grid_create(srat::TileGridCreateInfo {
-		.imageWidth = srat::image_dim(imageColor).x,
-		.imageHeight = image_dim(imageColor).y,
-	});
-
-
 	while (!WindowShouldClose())
 	{
 		BeginDrawing();
@@ -179,7 +171,7 @@ i32 main(i32 const argc, char const * const * argv)
 
 		// -- here is the srat hookup
 		// just draw triangle from 0,0->kWindowDim,0->256,kWindowDim
-		draw_scene(GetTime(), tileGrid, imageColor, sratImageDepth);
+		draw_scene(GetTime(), imageColor, sratImageDepth);
 
 		// lastly copy srat data into raylib texture
 		UpdateTexture(tex, srat::image_data(imageColor));
@@ -294,6 +286,15 @@ i32 main(i32 const argc, char const * const * argv)
 			) {
 				srat_tile_size() = tileSize * 8;
 			}
+
+			ImGui::Checkbox(
+				"enable binning phase",
+				&srat_enable_rasterize_binning()
+			);
+			ImGui::Checkbox(
+				"enable rasterization phase",
+				&srat_enable_rasterize_rasterization()
+			);
 #endif
 			ImGui::Text("(tile size: %d)", (i32)srat_tile_size());
 			ImGui::End();
@@ -307,7 +308,6 @@ i32 main(i32 const argc, char const * const * argv)
 
 	srat::image_destroy(imageColor);
 	srat::image_destroy(sratImageDepth);
-	srat::tile_grid_destroy(tileGrid);
 	SRAT_CLEAN_EXIT();
 
 	// raylib destroy

@@ -2,10 +2,64 @@
 
 // configuration for the tiled rasterizer
 
+#define SRAT_DEBUG() SRAT_DEBUG_IMPL
+
 #include "srat/types.hpp"
+
+#define let auto const
+#define mut auto
+
+#define defBinUseIndexCaching true
+
+namespace config {
+	static constexpr bool skBinUseIndexCaching = true;
+	static constexpr bool skBinUseSimd = false;
+	static constexpr bool skBinUseParallel = false;
+	static constexpr bool skBinUseTwoPhase = false;
+	static constexpr u32 skTileSize = 64;
+}
+
+// -- note: everything below is deprecated! ha!
+
 // -----------------------------------------------------------------------------
 // -- compile-time configuration
 // -----------------------------------------------------------------------------
+
+// if this is false, then each tile bin will allocate its own triangle memory,
+// without indexing, so an entire triangle copy (pos, depth, etc).
+// in this case the bin allocator will index directly into binAllocatorTriangles
+//
+// with index caching, the bin allocator will store the triangle copy into
+// binAllocatorTriangles as cache, and the bin will index into
+// binAllocatorIndices to fetch triangle data
+//
+// the pay-off is whether it's better performance to make tons of triangle
+// copies (large triangles could span multiple tiles), or to have more
+// indirection with index caching
+#define SRAT_BINNING_USE_INDEX_CACHE() true
+
+// if this is false, binning phase will be a single pass, which might result
+// in additional memory allocation (and copying) during binning
+//
+// if true, then binning phase will use two passes, the first will
+// calculate allocation requirements then second will bin.
+#define SRAT_BINNING_TWO_PHASES() false
+
+// -----------------------------------------------------------------------------
+// -- tunable configurations
+// -----------------------------------------------------------------------------
+
+#define SRAT_PERFORMANCE_MODE 1
+
+#if SRAT_PERFORMANCE_MODE
+
+#define SRAT_RUNTIME_CONFIGURABLE() 1
+#define SRAT_INFORMATION_PROPAGATION() 0
+#define SRAT_TILE_SIZE() 64
+#define SRAT_RASTERIZE_PARALLEL() 1
+#define SRAT_MAX_TRIANGLES_PER_TILE() 64 * 1024 * 1024
+
+#else // -- debug mode
 
 #define SRAT_RUNTIME_CONFIGURABLE() 1
 #define SRAT_DEBUG() 1
@@ -13,6 +67,8 @@
 #define SRAT_TILE_SIZE() 64
 #define SRAT_RASTERIZE_PARALLEL() 1
 #define SRAT_MAX_TRIANGLES_PER_TILE() 64 * 1024 * 1024
+
+#endif
 
 #define SRAT_TRACY_ENABLE() 1
 
@@ -33,6 +89,7 @@ bool & srat_binning_simd();
 
 #define srat_tile_size() SRAT_TILE_SIZE()
 #define srat_rasterize_parallel() SRAT_RASTERIZE_PARALLEL()
+#define srat_binning_simd() false
 
 #endif
 
@@ -46,10 +103,11 @@ bool & srat_binning_simd();
 #include <vector>
 std::vector<u64> & srat_debug_triangle_counts();
 bool & srat_information_propagation();
-bool & srat_information_propagation();
 
 #endif
 
+bool & srat_enable_rasterize_binning();
+bool & srat_enable_rasterize_rasterization();
 
 // -----------------------------------------------------------------------------
 // -- clean exit macro

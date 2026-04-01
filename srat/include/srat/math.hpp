@@ -33,8 +33,10 @@ struct u32v2 {
 struct i32v2 {
 	i32 x, y;
 
+	i32v2 operator *(i32v2 const s) const { return { x*s.x, y*s.y, }; }
 	i32v2 operator /(i32v2 const s) const { return { x/s.x, y/s.y, }; }
 	i32v2 operator -(i32v2 const s) const { return { x-s.x, y-s.y, }; }
+	i32v2 operator +(i32v2 const s) const { return { x+s.x, y+s.y, }; }
 };
 
 inline i32v2 i32v2_clamp(i32v2 const v, i32v2 const min, i32v2 const max) {
@@ -63,7 +65,8 @@ struct f32v3 {
 
 	f32v2 xy() const { return { x, y }; }
 
-	f32v3 operator /(f32v3 const s) const { return { x/s.x, y/s.y, z/s.z }; }
+	f32v3 operator /(f32v3 const s) const { return { x/s.x, y/s.y, z/s.z, }; }
+	f32v3 operator /(f32 const s) const { return { x/s, y/s, z/s, }; }
 };
 
 // -----------------------------------------------------------------------------
@@ -72,6 +75,11 @@ struct f32v3 {
 
 struct f32v4 {
 	f32 x {0.0f}, y {0.0f}, z {0.0f}, w {0.0f};
+
+	f32v4() = default;
+	f32v4(f32v3 const & v3, f32 w) : x(v3.x), y(v3.y), z(v3.z), w(w) {}
+	f32v4(f32 const x, f32 const y, f32 const z, f32 const w)
+		: x(x), y(y), z(z), w(w) {}
 
 	f32v2 xy() const { return { x, y }; }
 	f32v3 xyz() const { return { x, y, z }; }

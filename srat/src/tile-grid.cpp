@@ -10,10 +10,10 @@ namespace {
 struct ImplTileGrid {
 	u32 tileCountX;
 	u32 tileCountY;
-	srat::ArenaAllocator<i32v2> binAllocatorScreenPos;
-	srat::ArenaAllocator<float> binAllocatorDepth;
-	srat::ArenaAllocator<float> binAllocatorPerspectiveW;
-	srat::ArenaAllocator<f32v4> binAllocatorColor;
+	srat::ArenaAllocator<srat::TileTriangleData> binAllocatorTriangles;
+#if SRAT_BINNING_USE_INDEX_CACHE()
+	size_t triangleCount { 0 };
+#endif
 	std::vector<srat::TileBin> bins;
 	u32 initialBinCapacity;
 };
@@ -22,6 +22,57 @@ struct ImplTileGrid {
 static srat::HandlePool<srat::TileGrid, ImplTileGrid> sTileGridPool = (
 	srat::HandlePool<srat::TileGrid, ImplTileGrid>::create(128, "TileGridPool")
 );
+
+void tile_grid_bin_triangle(
+	srat::TileGrid & grid,
+	u32v2 tile,
+#if SRAT_BINNING_USE_INDEX_CACHE()
+	u32 const triangleIndex
+#else
+	srat::TileTriangleData const & triangleData
+#endif
+) {
+	// assign a triangle to a tile bin
+	ImplTileGrid & impl = *sTileGridPool.get(grid);
+	srat::TileBin & bin = tile_grid_bin(grid, tile);
+
+	// first check if we need to grow bin's triangle index storage
+	// all memory needs to be contiguous, so requires memcpy
+#if SRAT_BINNING_USE_INDEX_CACHE()
+	bin.triangleIndices.emplace_back(triangleIndex);
+#else
+	// allocate more memory if necessary, copying old data if it exists
+	if (bin.triangleCount == bin.triangleCapacity) {
+		srat::TileTriangleData * const oldData = bin.triangleData;
+		u32 const newCapacity = (
+			  (bin.triangleCapacity == 0)
+			? impl.initialBinCapacity
+			: (bin.triangleCapacity * 2)
+		);
+		srat::TileTriangleData * const newData = (
+			impl.binAllocatorTriangles.allocate(newCapacity)
+		);
+		SRAT_ASSERT(newData != nullptr); // out of memory
+		if (oldData != nullptr) {
+			memcpy(
+				newData, oldData, bin.triangleCount * sizeof(srat::TileTriangleData)
+			);
+		}
+
+		// -- update bin capacity/ptr
+		bin.triangleCapacity = newCapacity;
+		bin.triangleData = newData;
+		SRAT_ASSERT(bin.triangleCount < bin.triangleCapacity);
+	}
+	// store triangle data
+	memcpy(
+		&bin.triangleData[bin.triangleCount],
+		&triangleData,
+		sizeof(srat::TileTriangleData)
+	);
+	bin.triangleCount += 1;
+#endif
+}
 
 }
 
@@ -37,18 +88,14 @@ srat::TileGrid srat::tile_grid_create(TileGridCreateInfo const & createInfo) {
 	return sTileGridPool.allocate(ImplTileGrid {
 		.tileCountX = tileCountX,
 		.tileCountY = tileCountY,
-		.binAllocatorScreenPos = srat::ArenaAllocator<i32v2>::create(
-			maxVertices, "TileGridBinScreenPos"
+		.binAllocatorTriangles = (
+			srat::ArenaAllocator<srat::TileTriangleData>::create(
+				maxVertices, "TileGridBinTriangles"
+			)
 		),
-		.binAllocatorDepth = srat::ArenaAllocator<float>::create(
-			maxVertices, "TileGridBinDepth"
-		),
-		.binAllocatorPerspectiveW = srat::ArenaAllocator<float>::create(
-			maxVertices, "TileGridBinPerspectiveW"
-		),
-		.binAllocatorColor = srat::ArenaAllocator<f32v4>::create(
-			maxVertices, "TileGridBinColor"
-		),
+#if SRAT_BINNING_USE_INDEX_CACHE()
+		.triangleCount = 0,
+#endif
 		.bins = std::vector<srat::TileBin>(tileCountX * tileCountY),
 		.initialBinCapacity = createInfo.initialBinCapacity,
 	});
@@ -64,106 +111,30 @@ u32v2 srat::tile_grid_tile_count(TileGrid const & grid) {
 	return u32v2(impl->tileCountX, impl->tileCountY);
 }
 
+srat::TileTriangleData const & srat::tile_grid_triangle_data(
+	TileGrid const & grid,
+	u32 triangleIndex
+) {
+	ImplTileGrid & impl = *sTileGridPool.get(grid);
+	return impl.binAllocatorTriangles.data_ptr()[triangleIndex];
+}
+
 void srat::tile_grid_clear(TileGrid & grid) {
 	ImplTileGrid * impl = sTileGridPool.get(grid);
 	SRAT_ASSERT(impl != nullptr);
-	impl->binAllocatorScreenPos.clear();
-	impl->binAllocatorDepth.clear();
-	impl->binAllocatorPerspectiveW.clear();
-	impl->binAllocatorColor.clear();
+	impl->binAllocatorTriangles.clear();
+#if SRAT_BINNING_USE_INDEX_CACHE()
+	impl->triangleCount = 0;
+#endif
 	for (auto & bin : impl->bins) {
-		bin = {};
+#if SRAT_BINNING_USE_INDEX_CACHE()
+		bin.triangleIndices.clear();
+#else
+		bin.triangleData = nullptr;
+		bin.triangleCount = 0;
+		bin.triangleCapacity = 0;
+#endif
 	}
-}
-
-void srat::tile_grid_bin_triangle(
-	srat::TileGrid & grid,
-	u32v2 tile,
-	srat::TileTriangleData const & triangleData
-) {
-	// assign a triangle to a tile bin
-	ImplTileGrid & impl = *sTileGridPool.get(grid);
-	srat::TileBin & bin = tile_grid_bin(grid, tile);
-
-	// first check if we need to grow bin's triangle index storage
-	if (bin.triangleCount == bin.triangleCapacity) {
-		i32v2 * const oldScreenPos = bin.triangleScreenPos;
-		float * const oldDepth = bin.triangleDepth;
-		float * const oldPerspectiveW = bin.trianglePerspectiveW;
-		f32v4 * const oldColor = bin.triangleColor;
-		// -- allocate new storage for triangle indices
-		u32 const newCapacityTriangles = (
-			  (bin.triangleCapacity == 0)
-			? impl.initialBinCapacity
-			: (bin.triangleCapacity * 2)
-		);
-		u32 const newCapacity = newCapacityTriangles * 3;
-		bin.triangleScreenPos = (
-			impl.binAllocatorScreenPos.allocate(newCapacity)
-		);
-		bin.triangleDepth = (
-			impl.binAllocatorDepth.allocate(newCapacity)
-		);
-		bin.trianglePerspectiveW = (
-			impl.binAllocatorPerspectiveW.allocate(newCapacity)
-		);
-		bin.triangleColor = (
-			impl.binAllocatorColor.allocate(newCapacity)
-		);
-		SRAT_ASSERT(
-			   bin.triangleScreenPos != nullptr
-			&& bin.triangleDepth != nullptr
-			&& bin.trianglePerspectiveW != nullptr
-			&& bin.triangleColor != nullptr
-		);
-		if (!bin.triangleScreenPos) {
-			printf("ran out of arena allocation for tile grid\n");
-			exit(1);
-		}
-		// -- memcpy old indices to new storage if needed
-		if (oldScreenPos != nullptr) {
-			std::memcpy(
-				bin.triangleScreenPos,
-				oldScreenPos,
-				bin.triangleCount * sizeof(i32v2) * 3
-			);
-			std::memcpy(
-				bin.trianglePerspectiveW,
-				oldPerspectiveW,
-				bin.triangleCount * sizeof(float) * 3
-			);
-			std::memcpy(
-				bin.triangleDepth,
-				oldDepth,
-				bin.triangleCount * sizeof(float) * 3
-			);
-			std::memcpy(
-				bin.triangleColor,
-				oldColor,
-				bin.triangleCount * sizeof(f32v4) * 3
-			);
-		}
-
-		// -- update bin capacity/ptr
-		bin.triangleCapacity = newCapacityTriangles;
-	}
-
-	SRAT_ASSERT(bin.triangleCount < bin.triangleCapacity);
-	// bin.triangleIndices[bin.triangleCount] = triangleIndex;
-	auto const tc = bin.triangleCount * 3;
-	bin.triangleScreenPos[tc+0] = triangleData.screenPos[0];
-	bin.triangleScreenPos[tc+1] = triangleData.screenPos[1];
-	bin.triangleScreenPos[tc+2] = triangleData.screenPos[2];
-	bin.trianglePerspectiveW[tc+0] = triangleData.perspectiveW[0];
-	bin.trianglePerspectiveW[tc+1] = triangleData.perspectiveW[1];
-	bin.trianglePerspectiveW[tc+2] = triangleData.perspectiveW[2];
-	bin.triangleDepth[tc+0] = triangleData.depth[0];
-	bin.triangleDepth[tc+1] = triangleData.depth[1];
-	bin.triangleDepth[tc+2] = triangleData.depth[2];
-	bin.triangleColor[tc+0] = triangleData.color[0];
-	bin.triangleColor[tc+1] = triangleData.color[1];
-	bin.triangleColor[tc+2] = triangleData.color[2];
-	bin.triangleCount += 1;
 }
 
 void srat::tile_grid_bin_triangle_bbox(
@@ -173,6 +144,7 @@ void srat::tile_grid_bin_triangle_bbox(
 ) {
 	auto & impl = *sTileGridPool.get(grid);
 	auto const kTileDim = srat_tile_size();
+
 	// compute tile range covered by the triangle's bounding box
 	// TODO: optimization is to allocate ahead-of-time
 	i32v2 const minTile = (
@@ -193,9 +165,34 @@ void srat::tile_grid_bin_triangle_bbox(
 		// triangle bbox does not intersect grid, skip binning
 		return;
 	}
+
+	// -- cache the triangle data for binning, so multiple bins can refer to
+	//    a single index
+#if SRAT_BINNING_USE_INDEX_CACHE()
+	u32 triangleIndex = impl.triangleCount;
+	{
+		// store triangle data in the bin's triangle list
+		srat::TileTriangleData * const triangleDataPtr = (
+			impl.binAllocatorTriangles.allocate(1)
+		);
+		SRAT_ASSERT(triangleDataPtr != nullptr); // out of memory
+		// *triangleDataPtr = triangleData;
+		memcpy(triangleDataPtr, &triangleData, sizeof(srat::TileTriangleData));
+
+		SRAT_ASSERT(triangleDataPtr == impl.binAllocatorTriangles.data_ptr() + triangleIndex);
+
+		triangleIndex = impl.triangleCount;
+		impl.triangleCount += 1;
+	}
+#endif
+
 	for (i32 y = minTile.y; y <= maxTile.y; ++y)
 	for (i32 x = minTile.x; x <= maxTile.x; ++x) {
+#if SRAT_BINNING_USE_INDEX_CACHE()
+		tile_grid_bin_triangle(grid, u32v2(x, y), triangleIndex);
+#else
 		tile_grid_bin_triangle(grid, u32v2(x, y), triangleData);
+#endif
 	};
 }
 

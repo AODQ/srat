@@ -1,14 +1,17 @@
-#include <srat/rasterizer-tiled.hpp>
+#include <srat/rasterizer-rasterize.hpp>
 
-#include <srat/math.hpp>
+#include <tuple>
 
-#if SRAT_RASTERIZE_PARALLEL()
-#include <tbb/parallel_for.h>
-#endif
-
-// -----------------------------------------------------------------------------
-// -- phase rasterization
-// -----------------------------------------------------------------------------
+// include api
+namespace srat::modul {
+	u32v2 rasterizer_bin_tile_count();
+	u32 rasterizer_bin_tile_triangle_count(u32v2 const tileIdx);
+	std::tuple<
+		srat::triangle_position_t *,
+		srat::triangle_depth_t *,
+		srat::triangle_perspective_w_t *
+	> rasterizer_bin_tile_triangle(u32v2 const tileIdx, size_t const triIdx);
+}
 
 static inline void rasterize_tile_write_pixel(
 	i32 const x,
@@ -52,42 +55,32 @@ static inline void rasterize_tile_write_pixel(
 	}
 }
 
-static inline void rasterize_tile(
-	u32 const tileX,
-	u32 const tileY,
-	srat::TileGrid const & tileGrid,
-	srat::TileBin const & bin,
-	srat::Image const & targetColor,
-	srat::Image const & targetDepth
+static void rasterize_triangle(
+	u32v2 const tile,
+	u32 const triIdx,
+	srat::Image const imageColor,
+	srat::Image const imageDepth
 ) {
-	u32v2 const targetDim = srat::image_dim(targetColor);
-#if SRAT_BINNING_USE_INDEX_CACHE()
-	for (u32 index : bin.triangleIndices)
-#else
-	for (u32 i = 0; i < bin.triangleCount; ++i)
-#endif
-	{
-#if SRAT_BINNING_USE_INDEX_CACHE()
-		srat::TileTriangleData const & tri = (
-			srat::tile_grid_triangle_data(tileGrid, index)
-		);
-#else
-		srat::TileTriangleData const & tri = bin.triangleData[i];
-#endif
-		i32v2 const sp0 = tri.screenPos[0];
-		i32v2 const sp1 = tri.screenPos[1];
-		i32v2 const sp2 = tri.screenPos[2];
-		f32 const d0 = tri.depth[0];
-		f32 const d1 = tri.depth[1];
-		f32 const d2 = tri.depth[2];
+	u32v2 const targetDim = srat::image_dim(imageColor);
+	let tri = srat::modul::rasterizer_bin_tile_triangle(tile, triIdx);
+		i32v2 const sp0 = std::get<0>(tri)[0];
+		i32v2 const sp1 = std::get<0>(tri)[1];
+		i32v2 const sp2 = std::get<0>(tri)[2];
+		f32 const d0 = std::get<1>(tri)[0];
+		f32 const d1 = std::get<1>(tri)[1];
+		f32 const d2 = std::get<1>(tri)[2];
 		f32 const perspectiveW[3] = {
-			tri.perspectiveW[0],
-			tri.perspectiveW[1],
-			tri.perspectiveW[2]
+			std::get<2>(tri)[0],
+			std::get<2>(tri)[1],
+			std::get<2>(tri)[2]
 		};
-		f32v4 const c0 = tri.color[0];
-		f32v4 const c1 = tri.color[1];
-		f32v4 const c2 = tri.color[2];
+		// TODO color
+		// f32v4 const c0 = tri.color[0];
+		// f32v4 const c1 = tri.color[1];
+		// f32v4 const c2 = tri.color[2];
+		f32v4 const c0 = f32v4(1.0f, 1.0f, 1.0f, 1.0f);
+		f32v4 const c1 = f32v4(1.0f, 0.0f, 0.0f, 1.0f);
+		f32v4 const c2 = f32v4(1.0f, 0.0f, 1.0f, 1.0f);
 
 		// -- prepare attributes to be interpolated
 		f32v4x8 const v0AttrColor = (
@@ -111,12 +104,12 @@ static inline void rasterize_tile(
 		i32bbox2 const bboxTri = i32bbox2_from_triangle(sp0, sp1, sp2);
 		i32bbox2 const bboxImg = {
 			.min = {
-				(i32)tileX * (i32)srat_tile_size(),
-				(i32)tileY * (i32)srat_tile_size(),
+				(i32)tile.x * (i32)srat_tile_size(),
+				(i32)tile.y * (i32)srat_tile_size(),
 			},
 			.max = {
-				(i32)(tileX+1) * (i32)srat_tile_size() - 1,
-				(i32)(tileY+1) * (i32)srat_tile_size() - 1
+				(i32)(tile.x+1) * (i32)srat_tile_size() - 1,
+				(i32)(tile.y+1) * (i32)srat_tile_size() - 1
 			},
 		};
 		i32bbox2 const bbox = {
@@ -223,124 +216,30 @@ static inline void rasterize_tile(
 					/*interpColor=*/interpColor,
 					/*lanesDepth=*/lanesDepth,
 					/*lanesMask=*/lanesMask,
-					/*targetColor=*/targetColor,
-					/*targetDepth=*/targetDepth
+					/*targetColor=*/imageColor,
+					/*targetDepth=*/imageDepth
 				);
 				scanline_step();
 			}
 		}
-	}
 }
 
-static inline void rasterize_tile_range(
-	i32 const begin,
-	i32 const end,
-	srat::TileGrid & tileGrid,
-	srat::Image const & targetColor,
-	srat::Image const & targetDepth
+void srat::rasterizer_rasterize(
+	srat::Image const imageColor,
+	srat::Image const imageDepth
 ) {
-	u32v2 const tileCount = srat::tile_grid_tile_count(tileGrid);
-	for (i32 tileIdx = begin; tileIdx < end; ++tileIdx) {
-		u32 const tileX = tileIdx % (i32)tileCount.x;
-		u32 const tileY = tileIdx / (i32)tileCount.x;
-		srat::TileBin const & bin = (
-			srat::tile_grid_bin(tileGrid, u32v2(tileX, tileY))
-		);
-		rasterize_tile(
-			tileX, tileY,
-			tileGrid,
-			bin,
-			targetColor,
-			targetDepth
-		);
-#if SRAT_INFORMATION_PROPAGATION()
-		srat_debug_triangle_counts()[tileIdx] = bin.triangleCount;
-#endif
+	// for each tile...
+	let binTileCount = srat::modul::rasterizer_bin_tile_count();
+	for (mut tileX = 0u; tileX < binTileCount.x; ++ tileX)
+	for (mut tileY = 0u; tileY < binTileCount.y; ++ tileY) {
+		// for each tri...
+		u32v2 const tile = {tileX, tileY};
+		let binTileTriCount = u32 {
+			srat::modul::rasterizer_bin_tile_triangle_count(tile)
+		};
+		printf("bin tile tri count: %u\n", binTileTriCount );
+		for (mut triIdx = 0u; triIdx < binTileTriCount; ++triIdx) {
+			rasterize_triangle(tile, triIdx, imageColor, imageDepth);
+		}
 	}
 }
-
-void srat::rasterize_phase_rasterization(
-	srat::TileGrid & tileGrid,
-	srat::Image const & targetColor,
-	srat::Image const & targetDepth
-) {
-	u32v2 const tileCount = srat::tile_grid_tile_count(tileGrid);
-
-#if SRAT_INFORMATION_PROPAGATION()
-	if (srat_debug_triangle_counts().size() != tileCount.x * tileCount.y) {
-		srat_debug_triangle_counts().resize(tileCount.x * tileCount.y);
-	}
-#endif
-
-#if SRAT_RASTERIZE_PARALLEL()
-	if (srat_rasterize_parallel()) {
-		i32 const numTiles = (i32)(tileCount.x * tileCount.y);
-		tbb::parallel_for(
-			tbb::blocked_range<i32>(0, numTiles),
-			[&](tbb::blocked_range<i32> const & range) {
-				rasterize_tile_range(
-					range.begin(), range.end(),
-					tileGrid, targetColor, targetDepth
-				);
-			}
-		);
-	}
-	else
-#endif
-	{
-		i32 const begin = 0;
-		i32 const end = (i32)(tileCount.x * tileCount.y);
-		rasterize_tile_range(
-			begin,
-			end,
-			tileGrid, targetColor, targetDepth
-		);
-	}
-
-	// -- debug: draw 
-}
-
-// -----------------------------------------------------------------------------
-// -- runtime configuration
-// -----------------------------------------------------------------------------
-
-#if SRAT_RUNTIME_CONFIGURABLE()
-u64 & srat_tile_size() {
-	static u64 tileSize = SRAT_TILE_SIZE();
-	return tileSize;
-}
-
-bool & srat_rasterize_parallel() {
-	static bool parallel = SRAT_RASTERIZE_PARALLEL();
-	return parallel;
-}
-
-bool & srat_binning_simd() {
-	static bool binningSimd = false;
-	return binningSimd;
-}
-#endif
-
-#if SRAT_INFORMATION_PROPAGATION()
-std::vector<u64> & srat_debug_triangle_counts() {
-	static std::vector<u64> triCounts;
-	return triCounts;
-}
-
-bool & srat_information_propagation() {
-	static bool infoPropagation = SRAT_INFORMATION_PROPAGATION();
-	return infoPropagation;
-}
-#endif
-
-#if SRAT_RUNTIME_CONFIGURABLE()
-bool & srat_enable_rasterize_binning() {
-	static bool enable = true;
-	return enable;
-}
-
-bool & srat_enable_rasterize_rasterization() {
-	static bool enable = true;
-	return enable;
-}
-#endif

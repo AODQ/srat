@@ -1,5 +1,15 @@
 function makeprg_release()
-  vim.o.makeprg = 'ninja install -C ./build'
+  vim.o.makeprg = 'make release'
+  vim.cmd("make")
+end
+
+function makeprg_debug()
+  vim.o.makeprg = 'make debug'
+  vim.cmd("make")
+end
+
+function makeprg_release_optimized()
+  vim.o.makeprg = 'make release-optimize'
   vim.cmd("make")
 end
 

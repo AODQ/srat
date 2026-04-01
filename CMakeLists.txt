@@ -1,8 +1,26 @@
 cmake_minimum_required(VERSION 3.20)
 project(rasterizer)
 
-set(CMAKE_CXX_STANDARD 20)
+# ------------------------------------------------------------------------------
+# -- global cmake properties
+# ------------------------------------------------------------------------------
+
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+set(CMAKE_SKIP_BUILD_RPATH FALSE)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+
+# ------------------------------------------------------------------------------
+# -- sanitization
+# ------------------------------------------------------------------------------
+
+if (CMAKE_BUILD_TYPE STREQUAL Debug)
+	set(snort_sanitize_flags -fsanitize=address -fno-omit-frame-pointer)
+else()
+	set(snort_sanitize_flags "")
+endif()
 
 # ------------------------------------------------------------------------------
 # -- ccache
@@ -16,6 +34,9 @@ set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK    ccache)
 # -- oneTBB
 # ------------------------------------------------------------------------------
 
+option(TBB_TEST "Enable testing" OFF)
+option(TBB_EXAMPLES "Enable examples" OFF)
+option(TBB_STRICT "Treat compiler warnings as errors" OFF)
 add_subdirectory(external/oneTBB)
 
 # ------------------------------------------------------------------------------
@@ -62,25 +83,28 @@ target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${RLIMGUI_DIR})
 add_library(
 	srat
 	STATIC
-	srat/src/virtual-range-allocator.cpp
-	srat/src/tile-grid.cpp
-	srat/src/rasterizer-tiled.cpp
 	srat/src/command-buffer.cpp
 	srat/src/image.cpp
+	srat/src/rasterizer-binning.cpp
+	srat/src/rasterizer-rasterize.cpp
+	srat/src/rasterizer-stage-vertex.cpp
+	srat/src/rasterizer-tiled.cpp
+	srat/src/tile-grid.cpp
+	srat/src/virtual-range-allocator.cpp
 )
 set_target_properties(
 	srat
 	PROPERTIES
-	CXX_STANDARD 20
+	CXX_STANDARD 23
 	CXX_STANDARD_REQUIRED ON
-	UNITY_BUILD ON
+	UNITY_BUILD OFF
+
 )
 target_precompile_headers(
 	srat
 	PRIVATE
 	srat/include/srat/math.hpp
 )
-target_link_options(srat PRIVATE -fuse-ld=mold)
 target_include_directories(
 	srat
 	PUBLIC
@@ -91,9 +115,28 @@ target_include_directories(
 
 target_compile_options(
 	srat
-	PRIVATE -Wall -Wextra -Wpedantic -mavx2 -mfma -O3
+	PRIVATE
+	-Wall -Wextra -Wpedantic -mavx2 -mfma
+	$<$<CONFIG:Debug>:-O0 -g3 -ggdb>
+	$<$<CONFIG:RelWithDebInfo>:-O2 -g3 -ggdb -fno-omit-frame-pointer>
+	$<$<CONFIG:Release>:-O3>
+	${snort_sanitize_flags}
 	INTERFACE -mavx2 -mfma
 	#-DTRACY_ENABLE
+)
+target_compile_definitions(
+	srat
+	PRIVATE
+	$<$<CONFIG:Debug>:SRAT_DEBUG_IMPL=1>
+	$<$<CONFIG:RelWithDebInfo>:SRAT_DEBUG_IMPL=1>
+	$<$<CONFIG:Release>:SRAT_DEBUG_IMPL=0>
+)
+target_link_options(
+	srat
+	PRIVATE
+	"-fuse-ld=mold"
+	$<$<CONFIG:Debug>:-fsanitize=address>
+	$<$<CONFIG:RelWithDebInfo>:-fsanitize=address>
 )
 target_link_libraries(
 	srat
@@ -125,8 +168,21 @@ target_include_directories(
 	external/doctest
 )
 target_link_libraries(app PRIVATE srat raylib imgui)
-target_link_options(app PRIVATE -fuse-ld=mold)
+target_link_options(
+	app
+	PRIVATE
+	-fuse-ld=mold
+	$<$<CONFIG:Debug>:-fsanitize=address>
+	$<$<CONFIG:RelWithDebInfo>:-fsanitize=address>
+	${snort_sanitize_flags}
+)
 target_compile_options(app PRIVATE -Wall -Wextra -Wpedantic)
+set_target_properties(
+	app
+	PROPERTIES
+	BUILD_RPATH "$ORIGIN:$ORIGIN/../lib"
+	INSTALL_RPATH "$ORIGIN:$ORIGIN/../lib"
+)
 
 # install
 install(

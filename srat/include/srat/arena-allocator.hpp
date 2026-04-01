@@ -1,10 +1,15 @@
 #pragma once
 
 #include "types.hpp"
-
 #include "virtual-range-allocator.hpp"
 
+#include <tuple>
+
 // arena allocator for temporary memory allocations during rasterization
+
+// -----------------------------------------------------------------------------
+// -- arena allocator
+// -----------------------------------------------------------------------------
 
 namespace srat {
 
@@ -17,6 +22,8 @@ struct ArenaAllocator {
 
 	// allocate N contiguous elements
 	T * allocate(u32 const elementCount, u32 alignment = alignof(T));
+
+	inline T * data_ptr() { return data; }
 
 	void clear();
 	bool empty() const;
@@ -35,6 +42,73 @@ private:
 	VirtualRangeAllocator allocator;
 	T * data;
 	u32 capacity;
+};
+
+}
+
+// -----------------------------------------------------------------------------
+// -- struct of array arena allocator
+// -----------------------------------------------------------------------------
+
+namespace srat {
+
+template <typename ... Ts>
+struct SoAArenaAllocator {
+	// create an arena allocator for each type, with given capacity
+	static SoAArenaAllocator<Ts ...> create(
+		u32 const capacity,
+		char const * const debugName = "SoAArenaAllocator"
+	) {
+		return SoAArenaAllocator<Ts...>(
+			std::make_tuple(ArenaAllocator<Ts>::create(capacity, debugName) ...)
+		);
+	}
+	// allocate N contiguous elements for each type, returns tuple of pointers
+	std::tuple<Ts * ...> allocate(u32 const elementCount) {
+		return allocate_impl(elementCount, std::index_sequence_for<Ts ...>{});
+	}
+
+	std::tuple<Ts * ...> data_ptr() {
+		return data_ptr_impl(std::index_sequence_for<Ts ...>{});
+	}
+
+	// clear all allocators
+	void clear() {
+		clear_impl(std::index_sequence_for<Ts ...>{});
+	}
+
+private:
+
+	SoAArenaAllocator(std::tuple<ArenaAllocator<Ts> ...> && allocators) :
+		allocators(std::move(allocators))
+	{}
+
+	template <usize ... Is>
+	std::tuple<Ts * ...> allocate_impl(
+		u32 const elementCount,
+		std::index_sequence<Is ...>
+	) {
+		return std::make_tuple(
+			std::get<Is>(allocators).allocate(elementCount) ...
+		);
+	}
+
+	template <usize ... Is>
+	std::tuple<Ts * ...> data_ptr_impl(std::index_sequence<Is ...>) {
+		return std::make_tuple(
+			std::get<Is>(allocators).data_ptr() ...
+		);
+	}
+
+	template <usize ... Is>
+	void clear_impl(
+		std::index_sequence<Is ...>
+	) {
+		(std::get<Is>(allocators).clear(), ...);
+	}
+
+
+	std::tuple<ArenaAllocator<Ts> ...> allocators;
 };
 
 }

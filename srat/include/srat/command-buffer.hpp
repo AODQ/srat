@@ -10,9 +10,8 @@
 namespace srat {
 
 	struct VertexAttributeDescriptor {
-		u32 byteOffset { 0 };
 		u32 byteStride { 0 };
-		void const * data { nullptr };
+		u8 const * data { nullptr };
 	};
 
 	struct VertexAttributes {
@@ -41,10 +40,7 @@ namespace srat {
 		srat::Image const & depthTarget
 	);
 
-	void command_buffer_submit(
-		CommandBuffer const & cmdBuf,
-		srat::TileGrid & tileGrid
-	);
+	void command_buffer_submit(CommandBuffer const & cmdBuf);
 
 
 } // namespace srat

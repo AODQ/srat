@@ -6,16 +6,28 @@
 
 #include <srat/arena-allocator.hpp>
 
+#if SRAT_BINNING_USE_INDEX_CACHE()
+#include <vector>
+#endif
+
 namespace srat {
+
+	struct TileTriangleData {
+		i32v2 screenPos[3];
+		float depth[3];
+		float perspectiveW[3];
+		f32v4 color[3];
+	};
 
 	// tile bin structure
 	struct TileBin {
-		i32v2 * triangleScreenPos { nullptr };
-		float * triangleDepth { nullptr };
-		float * trianglePerspectiveW { nullptr };
-		f32v4 * triangleColor { nullptr };
+#if SRAT_BINNING_USE_INDEX_CACHE()
+		std::vector<u32> triangleIndices;
+#else
+		srat::TileTriangleData * triangleData { nullptr };
 		u32 triangleCount { 0 };
 		u32 triangleCapacity { 0 };
+#endif
 	};
 
 	struct TileGrid {
@@ -37,25 +49,24 @@ namespace srat {
 	// call once per frame before binning
 	void tile_grid_clear(TileGrid & grid);
 
-	struct TileTriangleData {
-		i32v2 screenPos[3];
-		float depth[3];
-		float perspectiveW[3];
-		f32v4 color[3];
-	};
-
-	// assign a triangle to a tile bin
-	void tile_grid_bin_triangle(
-		TileGrid & grid,
-		u32v2 tile,
-		TileTriangleData const & triangleData
+	TileTriangleData const & tile_grid_triangle_data(
+		TileGrid const & grid,
+		u32 triangleIndex
 	);
 
+	// assign a triangle to a tile bin
 	void tile_grid_bin_triangle_bbox(
 		TileGrid & grid,
 		i32bbox2 const & bounds,
 		TileTriangleData const & triangleData
+#if SRAT_BINNING_TWO_PHASES()
+		, bool secondPhase = false
+#endif
 	);
+
+#if SRAT_BINNING_TWO_PHASES()
+	void tile_grid_bin_finalize_allocations(TileGrid & grid);
+#endif
 
 	TileBin & tile_grid_bin(TileGrid & grid, u32v2 tile);
 

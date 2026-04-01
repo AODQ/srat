@@ -5,23 +5,23 @@
 
 TEST_SUITE("tile grid") {
 
-TEST_CASE("tile grid resets") {
-	auto grid = srat::tile_grid_create(srat::TileGridCreateInfo {
-		.imageWidth = 512,
-		.imageHeight = 512,
-		.maxTriangles = 64,
-		.initialBinCapacity = 4,
-	});
+// TEST_CASE("tile grid resets") {
+// 	auto grid = srat::tile_grid_create(srat::TileGridCreateInfo {
+// 		.imageWidth = 512,
+// 		.imageHeight = 512,
+// 		.maxTriangles = 64,
+// 		.initialBinCapacity = 4,
+// 	});
 
-	for (u32 i = 0; i < 1000; ++i) {
-		for (u32 i = 0; i < 4; ++i) {
-			srat::tile_grid_bin_triangle(grid, { 0, 0 }, {});
-		}
-		srat::tile_grid_clear(grid);
-	}
+// 	for (u32 i = 0; i < 1000; ++i) {
+// 		for (u32 i = 0; i < 4; ++i) {
+// 			srat::tile_grid_bin_triangle(grid, { 0, 0 }, {});
+// 		}
+// 		srat::tile_grid_clear(grid);
+// 	}
 
-	srat::tile_grid_destroy(grid);
-}
+// 	srat::tile_grid_destroy(grid);
+// }
 
 // TEST_CASE("tile grid create and destroy") {
 // 	auto grid = srat::tile_grid_create(srat::TileGridCreateInfo {

@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <utility> // for std::move
+#include <cstdio> // TODO move to logging
 
 using u64 = uint64_t;
 using u32 = uint32_t;
@@ -14,9 +15,21 @@ using i32 = int32_t;
 using i16 = int16_t;
 using i8 = int8_t;
 using f32 = float;
+using usize = std::size_t;
 
-namespace srat
-{
+static constexpr auto skEpsilon = 0.0001f;
+
+// common types for the rasterizer binning stage
+
+struct i32v2;
+
+namespace srat {
+
+using triangle_index_t = u32;
+using triangle_count_t = u32;
+using triangle_position_t = i32v2;
+using triangle_depth_t = float;
+using triangle_perspective_w_t = float;
 
 template <typename T>
 inline T alignUp(T value, T alignment)

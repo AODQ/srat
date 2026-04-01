@@ -1,3 +1,5 @@
 .cache/
 build/
 install/
+cmakefiles/
+cmakecache.txt
