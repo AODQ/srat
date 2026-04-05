@@ -58,26 +58,36 @@ void srat::rasterizer_phase_vertex(
 		Let ndcToScreen = [&params](f32v3 const ndc) -> i32v2 {
 			Let viewportDim = params.viewport.dim;
 			return i32v2 {
-				i32(std::round((ndc.x + 1.0f) * 0.5f * (f32)viewportDim.x)),
-				i32(std::round((1.0f - ndc.y) * 0.5f * (f32)viewportDim.y)),
+				i32(T_roundf<i32>((ndc.x + 1.0f) * 0.5f * (f32)viewportDim.x)),
+				i32(T_roundf<i32>((1.0f - ndc.y) * 0.5f * (f32)viewportDim.y)),
 			};
 		};
+		Let screen0 = i32v2 { ndcToScreen(ndc0) };
+		Let screen1 = i32v2 { ndcToScreen(ndc1) };
+		Let screen2 = i32v2 { ndcToScreen(ndc2) };
 
 		// -- skip back-facing triangles
-		Let area = f32 {f32v2_triangle_area(ndc0.xy(), ndc1.xy(), ndc2.xy())};
-		if (area >= skEpsilon) { continue; }
+		Let area = f32 {
+			f32v2_triangle_area(
+				as_f32v2(screen0), as_f32v2(screen1), as_f32v2(screen2)
+			)
+		};
+		if (area <= skEpsilon) { continue; }
 
 		// -- store parameters
 		Let outAttrIdx = params.outAttrsWritten;
-		params.outPositions[outAttrIdx + 0] = ndcToScreen(ndc0);
-		params.outPositions[outAttrIdx + 1] = ndcToScreen(ndc1);
-		params.outPositions[outAttrIdx + 2] = ndcToScreen(ndc2);
+		params.outPositions[outAttrIdx + 0] = screen0;
+		params.outPositions[outAttrIdx + 1] = screen1;
+		params.outPositions[outAttrIdx + 2] = screen2;
 		params.outDepth[outAttrIdx + 0] = ndc0.z;
 		params.outDepth[outAttrIdx + 1] = ndc1.z;
 		params.outDepth[outAttrIdx + 2] = ndc2.z;
 		params.outPerspectiveW[outAttrIdx + 0] = 1.0f / c0.w;
 		params.outPerspectiveW[outAttrIdx + 1] = 1.0f / c1.w;
 		params.outPerspectiveW[outAttrIdx + 2] = 1.0f / c2.w;
+		params.outColors[outAttrIdx + 0] = attr_fetch<f32v4>(va.color, i0);
+		params.outColors[outAttrIdx + 1] = attr_fetch<f32v4>(va.color, i1);
+		params.outColors[outAttrIdx + 2] = attr_fetch<f32v4>(va.color, i2);
 		params.outAttrsWritten += 3;
 	}
 }

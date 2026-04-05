@@ -60,8 +60,6 @@ void srat::gfx::device_prepare_draw(
 		impl->tileGrid = srat::tile_grid_create(srat::TileGridCreateInfo {
 			.imageWidth = viewport.dim.x,
 			.imageHeight = viewport.dim.y,
-			.maxTriangles = SRAT_MAX_TRIANGLES_PER_TILE(),
-			.initialBinCapacity = 1024u*1024u,
 		});
 	}
 }

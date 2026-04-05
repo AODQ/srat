@@ -15,13 +15,11 @@ static constexpr u32 kImageH   = kTileSize * 4;
 
 static srat::TileGrid make_grid(
 	u32 w = kImageW,
-	u32 h = kImageH,
-	u32 maxTris = 64
+	u32 h = kImageH
 ) {
 	return srat::tile_grid_create({
 		.imageWidth  = w,
 		.imageHeight = h,
-		.maxTriangles = maxTris,
 	});
 }
 

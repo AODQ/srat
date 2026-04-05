@@ -65,11 +65,13 @@ void draw_scene(
 		{ -1.f,  1.f,  1.f, },
 	}};
 
-	static constexpr srat::array<f32v3, 12> kCubeColors = {{
-		{ 1.f, 0.f, 0.f, }, { 1.f, 0.f, 0.f, }, { 1.f, 0.f, 0.f, },
-		{ 0.f, 1.f, 0.f, }, { 0.f, 1.f, 0.f, }, { 0.f, 1.f, 0.f, },
-		{ 0.f, 0.f, 1.f, }, { 0.f, 0.f, 1.f, }, { 0.f, 0.f, 1.f, },
-		{ 1.f, 1.f, 0.f, }, { 1.f, 1.f, 0.f, }, { 1.f, 1.f, 0.f, },
+	static constexpr srat::array<f32v4, 12> kCubeColors = {{
+		{ 1.f, 0.f, 0.f, 1.0f, }, { 1.f, 0.f, 0.f, 1.0f, },
+		{ 1.f, 0.f, 0.f, 1.0f, }, { 0.f, 1.f, 0.f, 1.0f, },
+		{ 0.f, 1.f, 0.f, 1.0f, }, { 0.f, 1.f, 0.f, 1.0f, },
+		{ 0.f, 0.f, 1.f, 1.0f, }, { 0.f, 0.f, 1.f, 1.0f, },
+		{ 0.f, 0.f, 1.f, 1.0f, }, { 1.f, 1.f, 0.f, 1.0f, },
+		{ 1.f, 1.f, 0.f, 1.0f, }, { 1.f, 1.f, 0.f, 1.0f, },
 	}};
 
 	static constexpr srat::array<u32, 36u> kCubeTriInds = {{
@@ -124,7 +126,7 @@ void draw_scene(
 			.data = srat::slice(kCubeVerts).cast<u8 const>(),
 		},
 		.color = {
-			.byteStride = sizeof(f32v3),
+			.byteStride = sizeof(f32v4),
 			.data = srat::slice(kCubeColors).cast<u8 const>(),
 		},
 		.normal = {},

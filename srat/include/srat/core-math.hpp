@@ -91,15 +91,15 @@ struct f32v3 {
 struct f32v4 {
 	f32 x {0.0f}, y {0.0f}, z {0.0f}, w {0.0f};
 
-	f32v4() = default;
-	f32v4(f32v3 const & v3, f32 w) : x(v3.x), y(v3.y), z(v3.z), w(w) {}
-	f32v4(f32 const x, f32 const y, f32 const z, f32 const w) //NOLINT
+	constexpr f32v4() = default;
+	constexpr f32v4(f32v3 const & v3, f32 w) : x(v3.x), y(v3.y), z(v3.z), w(w) {}
+	constexpr f32v4(f32 const x, f32 const y, f32 const z, f32 const w) //NOLINT
 		: x(x), y(y), z(z), w(w) {}
 
-	[[nodiscard]] f32v2 xy() const { return { x, y }; }
-	[[nodiscard]] f32v3 xyz() const { return { x, y, z }; }
+	[[nodiscard]] constexpr f32v2 xy() const { return { x, y }; }
+	[[nodiscard]] constexpr f32v3 xyz() const { return { x, y, z }; }
 
-	f32v4 operator /(f32v4 const s) const {
+	constexpr f32v4 operator /(f32v4 const s) const {
 		return { x/s.x, y/s.y, z/s.z, w/s.w };
 	}
 };

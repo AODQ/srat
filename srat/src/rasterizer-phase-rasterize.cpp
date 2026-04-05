@@ -66,13 +66,9 @@ static void rasterize_triangle(
 			tri.perspectiveW[1],
 			tri.perspectiveW[2]
 		};
-		// TODO color
-		// f32v4 const c0 = tri.color[0];
-		// f32v4 const c1 = tri.color[1];
-		// f32v4 const c2 = tri.color[2];
-		f32v4 const c0 = f32v4(1.0f, 1.0f, 1.0f, 1.0f);
-		f32v4 const c1 = f32v4(1.0f, 0.0f, 0.0f, 1.0f);
-		f32v4 const c2 = f32v4(1.0f, 0.0f, 1.0f, 1.0f);
+		f32v4 const c0 = tri.color[0];
+		f32v4 const c1 = tri.color[1];
+		f32v4 const c2 = tri.color[2];
 
 		// -- prepare attributes to be interpolated
 		f32v4x8 const v0AttrColor = (
@@ -225,8 +221,8 @@ void srat::rasterizer_phase_rasterization(
 	for (Mut tileY = 0u; tileY < tileCount.y; ++ tileY) {
 		// for each tri ...
 		u32v2 const tile = {tileX, tileY};
-		Let bin = srat::TileBin { srat::tile_grid_bin(ci.tileGrid, tile) };
-		for (Mut triIdx = 0u; triIdx < bin.triangleIndices.size(); ++triIdx) {
+		Let bin = srat::tile_grid_bin(ci.tileGrid, tile);
+	 	for (Mut triIdx = 0u; triIdx < bin.triangleIndices.size(); ++triIdx) {
 			rasterize_triangle(
 				ci.tileGrid,
 				bin,

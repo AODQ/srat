@@ -22,6 +22,7 @@ static constexpr auto skEpsilon = 0.0001f;
 // common types for the rasterizer binning stage
 
 struct i32v2;
+struct f32v4;
 
 namespace srat {
 
@@ -30,6 +31,7 @@ using triangle_count_t = u32;
 using triangle_position_t = i32v2;
 using triangle_depth_t = float;
 using triangle_perspective_w_t = float;
+using triangle_color_t = f32v4;
 
 template <typename T>
 inline T alignUp(T value, T alignment)

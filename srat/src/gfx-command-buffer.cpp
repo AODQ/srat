@@ -79,6 +79,7 @@ void sgfx::command_buffer_submit(
 	static std::vector<triangle_position_t> cachedAttrPos;
 	static std::vector<triangle_depth_t> cachedAttrDepth;
 	static std::vector<triangle_perspective_w_t> cachedAttrPerspW;
+	static std::vector<triangle_color_t> cachedAttrColor;
 
 	// -- precalculate cached allocations
 	Mut numTriangles = 0u;
@@ -89,6 +90,7 @@ void sgfx::command_buffer_submit(
 	cachedAttrPos.resize(numTriangles*3);
 	cachedAttrDepth.resize(numTriangles*3);
 	cachedAttrPerspW.resize(numTriangles*3);
+	cachedAttrColor.resize(numTriangles*3);
 
 	Let cachedAttrPosSlice = srat::slice(cachedAttrPos.data(), numTriangles*3);
 	Let cachedAttrDepthSlice = (
@@ -96,6 +98,9 @@ void sgfx::command_buffer_submit(
 	);
 	Let cachedAttrPerspWSlice = (
 		srat::slice(cachedAttrPerspW.data(), numTriangles*3)
+	);
+	Let cachedAttrColorSlice = (
+		srat::slice<triangle_color_t>(cachedAttrColor.data(), numTriangles*3)
 	);
 
 	// -- verify every attribute has data (for now)
@@ -144,6 +149,7 @@ void sgfx::command_buffer_submit(
 				.outPositions = cachedAttrPosSlice,
 				.outDepth = cachedAttrDepthSlice,
 				.outPerspectiveW = cachedAttrPerspWSlice,
+				.outColors = cachedAttrColorSlice,
 				.outAttrsWritten = numAttrs,
 			});
 			SRAT_ASSERT(numTriangles*3 >= numAttrs);
@@ -156,6 +162,7 @@ void sgfx::command_buffer_submit(
 		.trianglePositions = cachedAttrPosSlice,
 		.triangleDepths = cachedAttrDepthSlice,
 		.trianglePerspectiveW = cachedAttrPerspWSlice,
+		.triangleColors = cachedAttrColorSlice,
 	});
 
 	// -- rasterize binned triangles into target framebuffer

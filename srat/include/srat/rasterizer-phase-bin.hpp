@@ -11,6 +11,7 @@ namespace srat {
 		srat::slice<triangle_position_t>  trianglePositions;
 		srat::slice<triangle_depth_t> triangleDepths;
 		srat::slice<triangle_perspective_w_t> trianglePerspectiveW;
+		srat::slice<triangle_color_t> triangleColors;
 	};
 
 	void rasterizer_phase_bin(

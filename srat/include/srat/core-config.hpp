@@ -61,7 +61,6 @@ namespace config {
 #define SRAT_INFORMATION_PROPAGATION() 0
 #define SRAT_TILE_SIZE() 64
 #define SRAT_RASTERIZE_PARALLEL() 1
-#define SRAT_MAX_TRIANGLES_PER_TILE() (64 * 1024 * 1024)
 
 #else // -- debug mode
 
@@ -70,7 +69,6 @@ namespace config {
 #define SRAT_INFORMATION_PROPAGATION() 1
 #define SRAT_TILE_SIZE() 64
 #define SRAT_RASTERIZE_PARALLEL() 1
-#define SRAT_MAX_TRIANGLES_PER_TILE() 64 * 1024 * 1024
 
 #endif
 

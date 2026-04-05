@@ -29,8 +29,6 @@ namespace srat {
 	struct TileGridCreateInfo {
 		u32 imageWidth {0};
 		u32 imageHeight {0};
-		u32 maxTriangles = SRAT_MAX_TRIANGLES_PER_TILE();
-		u32 initialBinCapacity = 1024u*1024u;
 	};
 
 	TileGrid tile_grid_create(TileGridCreateInfo const & createInfo);

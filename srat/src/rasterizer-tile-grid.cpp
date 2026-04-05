@@ -15,7 +15,6 @@ struct ImplTileGrid {
 	u32 tileCountY;
 	std::vector<srat::TileTriangleData> triangles;
 	std::vector<srat::TileBin> bins;
-	u32 initialBinCapacity;
 };
 
 
@@ -81,7 +80,6 @@ srat::TileGrid srat::tile_grid_create(TileGridCreateInfo const & createInfo) {
 		.tileCountY = tileCountY,
 		.triangles = {},
 		.bins = std::vector<srat::TileBin>(tileCountX * tileCountY),
-		.initialBinCapacity = createInfo.initialBinCapacity,
 	});
 }
 
@@ -90,7 +88,7 @@ void srat::tile_grid_destroy(srat::TileGrid const & grid) {
 }
 
 u32v2 srat::tile_grid_tile_count(TileGrid const & grid) {
-	ImplTileGrid * impl = sTileGridPool.get(grid);
+	Let impl = sTileGridPool.get(grid);
 	SRAT_ASSERT(impl != nullptr);
 	return u32v2(impl->tileCountX, impl->tileCountY);
 }
@@ -162,7 +160,7 @@ void srat::tile_grid_bin_triangle_bbox(
 }
 
 srat::TileBin & srat::tile_grid_bin(TileGrid const & grid, u32v2 const & tile) {
-	ImplTileGrid & impl = *sTileGridPool.get(grid);
+	Ref impl = *sTileGridPool.get(grid);
 	Let tileIndex = u32 {(tile.y * impl.tileCountX) + tile.x};
 	SRAT_ASSERT(tileIndex < (impl.tileCountX * impl.tileCountY));
 	return impl.bins[tileIndex];
