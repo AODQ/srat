@@ -32,21 +32,22 @@ static srat::TileTriangleData make_triangle(
 	float	  * perspW,
 	f32v4 * color,
 	u32 tx, u32 ty,
-	u32 margin = 4
+	u32 margin = 4,
+	float depthV = 0.5f
 ) {
 	u32 const ox = tx * kTileSize + margin;
 	u32 const oy = ty * kTileSize + margin;
 	pos[0] = { (i32)(ox),			  (i32)(oy)			  };
 	pos[1] = { (i32)(ox + margin),	 (i32)(oy + margin * 2) };
 	pos[2] = { (i32)(ox + margin * 2), (i32)(oy)			  };
-	depth[0] = depth[1] = depth[2] = 0.5f;
+	depth[0] = depth[1] = depth[2] = depthV;
 	perspW[0] = perspW[1] = perspW[2] = 1.f;
 	color[0] = color[1] = color[2] = { 1.f, 0.f, 0.f, 1.f };
 	return srat::TileTriangleData {
-		.screenPos   = srat::slice<i32v2, 3> { pos,   3 },
-		.depth	   = srat::slice<float,		3> { depth, 3 },
-		.perspectiveW = srat::slice<float,		3> { perspW, 3 },
-		.color	   = srat::slice<f32v4,  3> { color, 3 },
+		.screenPos   = srat::array<i32v2, 3> { pos[0], pos[1], pos[2] },
+		.depth	   = srat::array<float,		3> { depth[0], depth[1], depth[2] },
+		.perspectiveW = srat::array<float,		3> { perspW[0], perspW[1], perspW[2] },
+		.color	   = srat::array<f32v4,  3> { color[0], color[1], color[2] },
 	};
 }
 
@@ -180,10 +181,10 @@ TEST_CASE("tile grid [bin preserves triangle data]") {
 	color[2] = { 0.f, 0.f, 1.f, 1.f };
 
 	srat::TileTriangleData tri {
-		.screenPos	= { pos,   3 },
-		.depth		= { depth, 3 },
-		.perspectiveW = { perspW, 3 },
-		.color		= { color,   3 },
+		.screenPos	= { pos[0], pos[1], pos[2] },
+		.depth		= { depth[0], depth[1], depth[2] },
+		.perspectiveW = { perspW[0], perspW[1], perspW[2] },
+		.color		= { color[0], color[1], color[2] },
 	};
 	srat::tile_grid_bin_triangle_bbox(grid, tri);
 
@@ -223,10 +224,10 @@ TEST_CASE("tile grid [triangle spanning 2x1 tiles]") {
 	col[0] = col[1] = col[2] = { 1.f, 1.f, 1.f, 1.f };
 
 	srat::TileTriangleData tri {
-		.screenPos	= { pos,   3 },
-		.depth		= { depth, 3 },
-		.perspectiveW = { perspW, 3 },
-		.color		= { col,   3 },
+		.screenPos	= { pos[0], pos[1], pos[2] },
+		.depth		= { depth[0], depth[1], depth[2] },
+		.perspectiveW = { perspW[0], perspW[1], perspW[2] },
+		.color		= { col[0], col[1], col[2] },
 	};
 	srat::tile_grid_bin_triangle_bbox(grid, tri);
 
@@ -250,10 +251,10 @@ TEST_CASE("tile grid [triangle spanning 2x2 tiles]") {
 	col[0] = col[1] = col[2] = { 1.f, 1.f, 1.f, 1.f };
 
 	srat::TileTriangleData tri {
-		.screenPos	= { pos,   3 },
-		.depth		= { depth, 3 },
-		.perspectiveW = { perspW, 3 },
-		.color		= { col,   3 },
+		.screenPos	= { pos[0],pos[1],pos[2] },
+		.depth		= { depth[0],depth[1],depth[2] },
+		.perspectiveW = { perspW[0],perspW[1],perspW[2] },
+		.color		= { col[0],col[1],col[2] },
 	};
 	srat::tile_grid_bin_triangle_bbox(grid, tri);
 
@@ -277,10 +278,10 @@ TEST_CASE("tile grid [same triangle index in all spanned tiles]") {
 	col[0] = col[1] = col[2] = { 1.f, 1.f, 1.f, 1.f };
 
 	srat::TileTriangleData tri {
-		.screenPos	= { pos,   3 },
-		.depth		= { depth, 3 },
-		.perspectiveW = { perspW, 3 },
-		.color		= { col,   3 },
+		.screenPos	= { pos[0],pos[1],pos[2] },
+		.depth		= { depth[0],depth[1],depth[2] },
+		.perspectiveW = { perspW[0],perspW[1],perspW[2] },
+		.color		= { col[0],col[1],col[2] },
 	};
 	srat::tile_grid_bin_triangle_bbox(grid, tri);
 
@@ -363,12 +364,10 @@ TEST_CASE("tile grid [triangle data independent per triangle]") {
 	i32v2 posA[3]; float depthA[3]; float perspWA[3]; f32v4 colA[3];
 	i32v2 posB[3]; float depthB[3]; float perspWB[3]; f32v4 colB[3];
 
-	auto triA = make_triangle(posA, depthA, perspWA, colA, 0, 0);
-	depthA[0] = depthA[1] = depthA[2] = 0.1f;
+	auto triA = make_triangle(posA, depthA, perspWA, colA, 0, 0, 4, 0.1f);
 	srat::tile_grid_bin_triangle_bbox(grid, triA);
 
-	auto triB = make_triangle(posB, depthB, perspWB, colB, 1, 0);
-	depthB[0] = depthB[1] = depthB[2] = 0.9f;
+	auto triB = make_triangle(posB, depthB, perspWB, colB, 1, 0, 4, 0.9f);
 	srat::tile_grid_bin_triangle_bbox(grid, triB);
 
 	auto & binA = srat::tile_grid_bin(grid, { 0, 0 });
@@ -404,10 +403,10 @@ TEST_CASE("tile grid [triangle data survives source going out of scope]") {
 		col[0] = col[1] = col[2] = { 1.f, 1.f, 1.f, 1.f };
 
 		srat::TileTriangleData tri {
-			.screenPos	= { pos,   3 },
-			.depth		= { depth, 3 },
-			.perspectiveW = { perspW, 3 },
-			.color		= { col,   3 },
+			.screenPos	= { pos[0],pos[1],pos[2] },
+			.depth		= { depth[0],depth[1],depth[2] },
+			.perspectiveW = { perspW[0],perspW[1],perspW[2] },
+			.color		= { col[0],col[1],col[2] },
 		};
 		srat::tile_grid_bin_triangle_bbox(grid, tri);
 		triIdx = srat::tile_grid_bin(grid, { 0, 0 }).triangleIndices[0];

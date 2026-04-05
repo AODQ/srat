@@ -288,16 +288,16 @@ TEST_CASE("arena soa [data_ptr capacity]") {
 		CHECK(ints.ptr() != nullptr);
 		CHECK(floats.ptr() != nullptr);
 	}
-	auto [_, _] = soa.allocate(16);
 	{
+		[[maybe_unused]] auto [a, b] = soa.allocate(16);
 		auto [ints, floats] = soa.data_ptr();
 		CHECK_EQ(ints.size(), 16);
 		CHECK_EQ(floats.size(), 16);
 		CHECK(ints.ptr() != nullptr);
 		CHECK(floats.ptr() != nullptr);
 	}
-	auto [_, _] = soa.allocate(16);
 	{
+		[[maybe_unused]] auto [a, b] = soa.allocate(16);
 		auto [ints, floats] = soa.data_ptr();
 		CHECK_EQ(ints.size(), 32);
 		CHECK_EQ(floats.size(), 32);

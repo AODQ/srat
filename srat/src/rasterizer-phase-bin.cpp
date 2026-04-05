@@ -12,9 +12,21 @@ void srat::rasterizer_phase_bin(
 	Let triangleCount = params.trianglePositions.size() / 3;
 	for (Mut triIt = 0u; triIt < triangleCount; ++triIt) {
 		Let triData = srat::TileTriangleData {
-			.screenPos = params.trianglePositions.subslice(triIt*3).as<3>(),
-			.depth = params.triangleDepths.subslice(triIt*3).as<3>(),
-			.perspectiveW = params.trianglePerspectiveW.subslice(triIt*3).as<3>(),
+			.screenPos = {
+				params.trianglePositions[(triIt*3) + 0],
+				params.trianglePositions[(triIt*3) + 1],
+				params.trianglePositions[(triIt*3) + 2]
+			},
+			.depth = {
+				params.triangleDepths[(triIt*3) + 0],
+				params.triangleDepths[(triIt*3) + 1],
+				params.triangleDepths[(triIt*3) + 2]
+			},
+			.perspectiveW = {
+				params.trianglePerspectiveW[(triIt*3) + 0],
+				params.trianglePerspectiveW[(triIt*3) + 1],
+				params.trianglePerspectiveW[(triIt*3) + 2]
+			},
 			.color = {} // TODO
 		};
 		srat::tile_grid_bin_triangle_bbox(params.tileGrid, triData);

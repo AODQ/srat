@@ -13,8 +13,7 @@ namespace {
 struct ImplTileGrid {
 	u32 tileCountX;
 	u32 tileCountY;
-	srat::AllocArena<srat::TileTriangleData> binAllocatorTriangles;
-	std::vector<srat::TileTriangleData *> triangleDataPtrs;
+	std::vector<srat::TileTriangleData> triangles;
 	std::vector<srat::TileBin> bins;
 	u32 initialBinCapacity;
 };
@@ -77,16 +76,10 @@ srat::TileGrid srat::tile_grid_create(TileGridCreateInfo const & createInfo) {
 	auto const kTileDim = srat_tile_size();
 	u32 const tileCountX = (createInfo.imageWidth + kTileDim - 1) / kTileDim;
 	u32 const tileCountY = (createInfo.imageHeight + kTileDim - 1) / kTileDim;
-	u32 const maxVertices = createInfo.maxTriangles * 3;
 	return sTileGridPool.allocate(ImplTileGrid {
 		.tileCountX = tileCountX,
 		.tileCountY = tileCountY,
-		.binAllocatorTriangles = (
-			srat::AllocArena<srat::TileTriangleData>::create(
-				maxVertices, "TileGridBinTriangles"
-			)
-		),
-		.triangleDataPtrs = {},
+		.triangles = {},
 		.bins = std::vector<srat::TileBin>(tileCountX * tileCountY),
 		.initialBinCapacity = createInfo.initialBinCapacity,
 	});
@@ -107,14 +100,12 @@ srat::TileTriangleData const & srat::tile_grid_triangle_data(
 	u32 triangleIndex
 ) {
 	Let impl = *sTileGridPool.get(grid);
-	SRAT_ASSERT(triangleIndex < impl.triangleDataPtrs.size());
-	return *impl.triangleDataPtrs[triangleIndex];
+	return impl.triangles[triangleIndex];
 }
 
 void srat::tile_grid_clear(TileGrid const & grid) {
 	Ref impl = *sTileGridPool.get(grid);
-	impl.binAllocatorTriangles.clear();
-	impl.triangleDataPtrs.clear();
+	impl.triangles.clear();
 	for (auto & bin : impl.bins) {
 		bin.triangleIndices.clear();
 	}
@@ -160,14 +151,8 @@ void srat::tile_grid_bin_triangle_bbox(
 	//    a single index
 	Let triangleIndex = [&]() -> u32 {
 		// store triangle data in the bin's triangle list
-		srat::TileTriangleData * const triangleDataPtr = (
-			impl.binAllocatorTriangles.allocate(1)
-		);
-		// store the triangle data at the allocated index
-		*triangleDataPtr = triangleData;
-
-		impl.triangleDataPtrs.push_back(triangleDataPtr);
-		return impl.triangleDataPtrs.size()-1;
+		impl.triangles.push_back(triangleData);
+		return impl.triangles.size() - 1;
 	}();
 
 	for (Mut y = i32{minTile.y}; y <= maxTile.y; ++y)

@@ -63,6 +63,10 @@ void srat::rasterizer_phase_vertex(
 			};
 		};
 
+		// -- skip back-facing triangles
+		Let area = f32 {f32v2_triangle_area(ndc0.xy(), ndc1.xy(), ndc2.xy())};
+		if (area >= skEpsilon) { continue; }
+
 		// -- store parameters
 		Let outAttrIdx = params.outAttrsWritten;
 		params.outPositions[outAttrIdx + 0] = ndcToScreen(ndc0);

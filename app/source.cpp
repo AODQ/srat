@@ -49,7 +49,7 @@ void draw_scene(
 	}
 
 	// -- clear depth
-	auto depthPtr = srat::gfx::image_data8(depthTarget);
+	Let depthPtr = srat::slice<u16> {srat::gfx::image_data16(depthTarget)};
 	for (u64 i = 0; i < (u64)kWindowDim.x * (u64)kWindowDim.y; ++i) {
 		depthPtr[i] = UINT16_MAX; // max depth
 	}
@@ -153,7 +153,7 @@ i32 main(i32 const argc, char const * const * argv)
 	raylib_init();
 
 	Image const img = GenImageColor(kWindowDim.x, kWindowDim.y, BLACK);
-	Texture2D const tex = LoadTextureFromImage(img);
+	Texture2D tex = LoadTextureFromImage(img);
 
 	srat::gfx::Image const imageColor = (
 		srat::gfx::image_create(srat::gfx::ImageCreateInfo {
@@ -183,9 +183,7 @@ i32 main(i32 const argc, char const * const * argv)
 		draw_scene(device, (f32)GetTime(), imageColor, sratImageDepth);
 
 		// lastly copy srat data into raylib texture
-#if 0
-		UpdateTexture(tex, srat::gfx::image_data(imageColor));
-#endif
+		UpdateTexture(tex, srat::gfx::image_data8(imageColor).ptr());
 
 		static srat::array<float, 16> timings {};
 		static float timeSinceLastUpdate = 0.f;
@@ -289,8 +287,8 @@ i32 main(i32 const argc, char const * const * argv)
 				ImGui::SliderInt(
 					/*label=*/ "tile size (multiple of 8)",
 					/*v=*/ &tileSize,
-					/*min=*/ 2,
-					/*max=*/ 64,
+					/*v_min=*/ 2,
+					/*v_max=*/ 64,
 					/*format=*/ "%d",
 					/*flags=*/ ImGuiSliderFlags_AlwaysClamp
 				)

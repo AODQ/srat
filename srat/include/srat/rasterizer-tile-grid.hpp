@@ -15,10 +15,10 @@ namespace srat {
 	};
 
 	struct TileTriangleData {
-		srat::slice<i32v2, 3> screenPos;
-		srat::slice<float, 3> depth;
-		srat::slice<float, 3> perspectiveW;
-		srat::slice<f32v4, 3> color;
+		srat::array<i32v2, 3> screenPos {};
+		srat::array<float, 3> depth {};
+		srat::array<float, 3> perspectiveW {};
+		srat::array<f32v4, 3> color {};
 	};
 
 	// tile bin structure
