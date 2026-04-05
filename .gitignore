@@ -1,5 +1,6 @@
-.cache/
 build/
-install/
-cmakefiles/
+.cache/
 cmakecache.txt
+cmakefiles/
+install/
+reference-bins/

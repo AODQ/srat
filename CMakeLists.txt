@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.20)
 project(rasterizer)
 
 # ------------------------------------------------------------------------------
+# -- options
+# ------------------------------------------------------------------------------
+
+option(SRAT_TSAN "Override ASAN with TSAN" OFF)
+
+# ------------------------------------------------------------------------------
 # -- global cmake properties
 # ------------------------------------------------------------------------------
 
@@ -17,7 +23,25 @@ set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 # ------------------------------------------------------------------------------
 
 if (CMAKE_BUILD_TYPE STREQUAL Debug)
-	set(snort_sanitize_flags -fsanitize=address -fno-omit-frame-pointer)
+	if (SRAT_TSAN)
+		set(
+			snort_sanitize_flags
+			-fsanitize=thread -fno-omit-frame-pointer
+		)
+		set(
+			snort_linker_flags
+			-fsanitize=thread
+		)
+	else()
+		set(
+			snort_sanitize_flags
+			-fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer
+		)
+		set(
+			snort_linker_flags
+			-fsanitize=address -fsanitize=undefined
+		)
+	endif()
 else()
 	set(snort_sanitize_flags "")
 endif()
@@ -83,14 +107,16 @@ target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${RLIMGUI_DIR})
 add_library(
 	srat
 	STATIC
-	srat/src/command-buffer.cpp
-	srat/src/image.cpp
-	srat/src/rasterizer-binning.cpp
-	srat/src/rasterizer-rasterize.cpp
-	srat/src/rasterizer-stage-vertex.cpp
-	srat/src/rasterizer-tiled.cpp
-	srat/src/tile-grid.cpp
-	srat/src/virtual-range-allocator.cpp
+	srat/src/alloc-virtual-range.cpp
+	srat/src/core-config.cpp
+	srat/src/gfx-command-buffer.cpp
+	srat/src/gfx-device.cpp
+	srat/src/gfx-image.cpp
+	srat/src/internal-gfx-device.hpp
+	srat/src/rasterizer-phase-bin.cpp
+	srat/src/rasterizer-phase-rasterize.cpp
+	srat/src/rasterizer-phase-vertex.cpp
+	srat/src/rasterizer-tile-grid.cpp
 )
 set_target_properties(
 	srat
@@ -103,7 +129,7 @@ set_target_properties(
 target_precompile_headers(
 	srat
 	PRIVATE
-	srat/include/srat/math.hpp
+	srat/include/srat/core-math.hpp
 )
 target_include_directories(
 	srat
@@ -116,7 +142,7 @@ target_include_directories(
 target_compile_options(
 	srat
 	PRIVATE
-	-Wall -Wextra -Wpedantic -mavx2 -mfma
+	-Wall -Wextra -Wpedantic -mavx2 -mfma -fno-rtti -fno-exceptions
 	$<$<CONFIG:Debug>:-O0 -g3 -ggdb>
 	$<$<CONFIG:RelWithDebInfo>:-O2 -g3 -ggdb -fno-omit-frame-pointer>
 	$<$<CONFIG:Release>:-O3>
@@ -135,8 +161,8 @@ target_link_options(
 	srat
 	PRIVATE
 	"-fuse-ld=mold"
-	$<$<CONFIG:Debug>:-fsanitize=address>
-	$<$<CONFIG:RelWithDebInfo>:-fsanitize=address>
+	$<$<CONFIG:Debug>:${snort_linker_flags}>
+	$<$<CONFIG:RelWithDebInfo>:${snort_linker_flags}>
 )
 target_link_libraries(
 	srat
@@ -155,12 +181,15 @@ target_sources(
 	app
 	PRIVATE
 	app/source.cpp
-	app/unit-tests.cpp
-	app/unit-test-tile-grid.cpp
-	app/unit-test-virtual-block-allocator.cpp
-	app/unit-test-handles.cpp
-	app/unit-test-math.cpp
+	app/unit-test-alloc-arena.cpp
+	app/unit-test-alloc-virtual-range.cpp
+	app/unit-test-core-array.cpp
+	app/unit-test-core-handles.cpp
+	app/unit-test-core-math.cpp
+	app/unit-test-gfx-image.cpp
 	app/unit-test-rasterizer.cpp
+	app/unit-test-rasterizer-tile-grid.cpp
+	app/unit-tests.cpp
 )
 target_include_directories(
 	app
@@ -171,9 +200,9 @@ target_link_libraries(app PRIVATE srat raylib imgui)
 target_link_options(
 	app
 	PRIVATE
-	-fuse-ld=mold
-	$<$<CONFIG:Debug>:-fsanitize=address>
-	$<$<CONFIG:RelWithDebInfo>:-fsanitize=address>
+	-fuse-ld=mold -fno-rtti -fno-exceptions
+	$<$<CONFIG:Debug>:${snort_linker_flags}>
+	$<$<CONFIG:RelWithDebInfo>:${snort_linker_flags}>
 	${snort_sanitize_flags}
 )
 target_compile_options(app PRIVATE -Wall -Wextra -Wpedantic)

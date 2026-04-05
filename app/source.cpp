@@ -1,17 +1,16 @@
 #include <cstdio>
 
-#include <srat/command-buffer.hpp>
-#include <srat/image.hpp>
-#include <srat/rasterizer-binning.hpp>
-#include <srat/types.hpp>
-#include <srat/virtual-range-allocator.hpp>
+#include <srat/gfx-command-buffer.hpp>
+#include <srat/gfx-image.hpp>
+#include <srat/core-types.hpp>
+#include <srat/alloc-virtual-range.hpp>
 
+#include <imgui.h>
 #include <raylib.h>
 #include <rlImGui.h>
-#include <imgui.h>
 
-#include <array>
 #include <cstdint>
+#include <numbers>
 
 static constexpr i32v2 kWindowDim = { 512, 512 };
 static bool animationEnabled = true;
@@ -34,27 +33,28 @@ void raylib_shutdown()
 
 // just a placeholder function
 void draw_scene(
+	srat::gfx::Device const & device,
 	f32 const deltaTime,
-	srat::Image const & target,
-	srat::Image const & depthTarget
+	srat::gfx::Image const & target,
+	srat::gfx::Image const & depthTarget
 )
 {
 	// -- clear image
+	srat::slice<u8> imagePtr = srat::gfx::image_data8(target);
 	for (u64 i = 0; i < (u64)kWindowDim.x * (u64)kWindowDim.y; ++i) {
-		u8 * pixel = srat::image_data(target) + i * 4;
-		pixel[0] = 0; // r
-		pixel[1] = 0; // g
-		pixel[2] = 0; // b
-		pixel[3] = 255; // a
+		imagePtr[i*4 + 0] = 0; // r
+		imagePtr[i*4 + 1] = 0; // g
+		imagePtr[i*4 + 2] = 0; // b
+		imagePtr[i*4 + 3] = 255; // a
 	}
 
 	// -- clear depth
+	auto depthPtr = srat::gfx::image_data8(depthTarget);
 	for (u64 i = 0; i < (u64)kWindowDim.x * (u64)kWindowDim.y; ++i) {
-		u16 * depth = (u16 *)srat::image_data(depthTarget) + i;
-		*depth = UINT16_MAX; // max depth
+		depthPtr[i] = UINT16_MAX; // max depth
 	}
 
-	static constexpr f32v3 kCubeVerts[8] = {
+	static constexpr srat::array<f32v3, 8> kCubeVerts = {{
 		{ -1.f, -1.f, -1.f, },
 		{  1.f, -1.f, -1.f, },
 		{  1.f,  1.f, -1.f, },
@@ -63,28 +63,36 @@ void draw_scene(
 		{  1.f, -1.f,  1.f, },
 		{  1.f,  1.f,  1.f, },
 		{ -1.f,  1.f,  1.f, },
-	};
+	}};
 
-	static constexpr f32v3 kCubeTris[] = {
+	static constexpr srat::array<f32v3, 12> kCubeColors = {{
 		{ 1.f, 0.f, 0.f, }, { 1.f, 0.f, 0.f, }, { 1.f, 0.f, 0.f, },
 		{ 0.f, 1.f, 0.f, }, { 0.f, 1.f, 0.f, }, { 0.f, 1.f, 0.f, },
 		{ 0.f, 0.f, 1.f, }, { 0.f, 0.f, 1.f, }, { 0.f, 0.f, 1.f, },
 		{ 1.f, 1.f, 0.f, }, { 1.f, 1.f, 0.f, }, { 1.f, 1.f, 0.f, },
-	};
+	}};
 
-	static constexpr u32 kCubeTriInds[12*3] = {
+	static constexpr srat::array<u32, 36u> kCubeTriInds = {{
 		0, 1, 2, 0, 2, 3, // back
 		4, 6, 5, 4, 7, 6, // front
 		0, 4, 5, 0, 5, 1, // bottom
 		3, 2, 6, 3, 6, 7, // top
 		1, 5, 6, 1, 6, 2, // right
 		0, 3, 7, 0, 7, 4, // left
-	};
+	}};
 
 	// build modelviewproj
 	f32 const time = animationEnabled ? fmodf(deltaTime, 1000.f) : 0.f;
-	srat::CommandBuffer cmdBuf = srat::command_buffer_create();
-	srat::command_buffer_bind_framebuffer(cmdBuf, target, depthTarget);
+	srat::gfx::CommandBuffer cmdBuf = srat::gfx::command_buffer_create();
+	srat::gfx::command_buffer_bind_framebuffer(
+		cmdBuf,
+		srat::gfx::Viewport {
+			.offset = { 0, 0 },
+			.dim = { kWindowDim.x, kWindowDim.y },
+		},
+		target,
+		depthTarget
+	);
 	static constexpr i32 kGridX = 1;
 	static constexpr i32 kGridY = 1;
 	static constexpr i32 kGridZ = 1;
@@ -98,40 +106,40 @@ void draw_scene(
 		  f32m44_rotate_y(time * 0.5f)
 		* f32m44_rotate_x(time * 0.25f)
 		* f32m44_translate(
-			(cx - kGridX * 0.5f) * 2.5f,
-			(cy - kGridY * 0.5f) * 2.5f,
-			(cz - kGridZ * 0.5f) * 2.5f
+			((f32)cx - kGridX * 0.5f) * 2.5f,
+			((f32)cy - kGridY * 0.5f) * 2.5f,
+			((f32)cz - kGridZ * 0.5f) * 2.5f
 		)
 	);
 	f32m44 const view = f32m44_translate(0.f, 0.f, -10.0f);
 	f32m44 const proj = f32m44_perspective(
-		90.f * (3.14159265f / 180.f), /*aspect=*/ 1.0f, 0.1f, 5000.0f
+		90.f * (std::numbers::pi_v<float> / 180.f), /*aspect=*/ 1.0f, 0.1f, 5000.0f
 	);
 	f32m44 const modelViewProj = proj * view * model;
 
 	// -- rasterize 12 triangles
-	srat::VertexAttributes const attributes = {
+	srat::gfx::VertexAttributes const attributes = {
 		.position = {
-			.byteStride = sizeof(f32v4),
-			.data = (u8 *)kCubeVerts,
+			.byteStride = sizeof(f32v3),
+			.data = srat::slice(kCubeVerts).cast<u8 const>(),
 		},
 		.color = {
-			.byteStride = sizeof(f32v4),
-			.data = (u8 *)kCubeTris,
+			.byteStride = sizeof(f32v3),
+			.data = srat::slice(kCubeColors).cast<u8 const>(),
 		},
 		.normal = {},
 		.uv = {},
 	};
 
-	srat::command_buffer_draw(cmdBuf, srat::DrawInfo {
+	srat::gfx::command_buffer_draw(cmdBuf, srat::gfx::DrawInfo {
 		.modelViewProjection = modelViewProj,
 		.vertexAttributes = attributes,
-		.indices = (u32 *)kCubeTriInds,
+		.indices = srat::slice(kCubeTriInds).cast<u32 const>(),
 		.indexCount = 12*3,
 	});
 	}
-	srat::command_buffer_submit(cmdBuf);
-	srat::command_buffer_destroy(cmdBuf);
+	srat::gfx::command_buffer_submit(device, cmdBuf);
+	srat::gfx::command_buffer_destroy(cmdBuf);
 }
 
 // -----------------------------------------------------------------------------
@@ -144,25 +152,26 @@ i32 main(i32 const argc, char const * const * argv)
 
 	raylib_init();
 
-	Texture2D const tex = (
-		LoadTextureFromImage(GenImageColor(kWindowDim.x, kWindowDim.y, BLACK))
-	);
+	Image const img = GenImageColor(kWindowDim.x, kWindowDim.y, BLACK);
+	Texture2D const tex = LoadTextureFromImage(img);
 
-	srat::Image const imageColor = (
-		srat::image_create(srat::ImageCreateInfo {
+	srat::gfx::Image const imageColor = (
+		srat::gfx::image_create(srat::gfx::ImageCreateInfo {
 			.dim = { kWindowDim.x, kWindowDim.y },
-			.layout = srat::Layout::Linear,
-			.format = srat::Format::r8g8b8a8_unorm,
+			.layout = srat::gfx::ImageLayout::Linear,
+			.format = srat::gfx::ImageFormat::r8g8b8a8_unorm,
 		})
 	);
 
-	srat::Image const sratImageDepth = (
-		srat::image_create(srat::ImageCreateInfo {
+	srat::gfx::Image const sratImageDepth = (
+		srat::gfx::image_create(srat::gfx::ImageCreateInfo {
 			.dim = { kWindowDim.x, kWindowDim.y },
-			.layout = srat::Layout::Linear,
-			.format = srat::Format::depth16_unorm,
+			.layout = srat::gfx::ImageLayout::Linear,
+			.format = srat::gfx::ImageFormat::depth16_unorm,
 		})
 	);
+
+	srat::gfx::Device const device = srat::gfx::device_create();
 
 	while (!WindowShouldClose())
 	{
@@ -171,12 +180,14 @@ i32 main(i32 const argc, char const * const * argv)
 
 		// -- here is the srat hookup
 		// just draw triangle from 0,0->kWindowDim,0->256,kWindowDim
-		draw_scene(GetTime(), imageColor, sratImageDepth);
+		draw_scene(device, (f32)GetTime(), imageColor, sratImageDepth);
 
 		// lastly copy srat data into raylib texture
-		UpdateTexture(tex, srat::image_data(imageColor));
+#if 0
+		UpdateTexture(tex, srat::gfx::image_data(imageColor));
+#endif
 
-		static std::array<float, 16> timings {};
+		static srat::array<float, 16> timings {};
 		static float timeSinceLastUpdate = 0.f;
 		timeSinceLastUpdate += GetFrameTime();
 		static float timeSinceLastUpdateTime = 0.f;
@@ -200,7 +211,7 @@ i32 main(i32 const argc, char const * const * argv)
 		// draw the tile count on each tile for debugging
 // #if SRAT_INFORMATION_PROPAGATION()
 // 		if (srat_information_propagation()) {
-// 			u32v2 const targetDim = srat::image_dim(imageColor);
+// 			u32v2 const targetDim = srat::gfx::image_dim(imageColor);
 // 			u32 const tileSize = srat_tile_size();
 // 			u32v2 const tileCount = {
 // 				(u32)(targetDim.x + tileSize - 1) / tileSize,
@@ -256,7 +267,7 @@ i32 main(i32 const argc, char const * const * argv)
 
 			ImGui::PlotHistogram(
 				"frame time history",
-				timings.data(),
+				timings.ptr(),
 				(int)timings.size(),
 				0,
 				nullptr,
@@ -306,14 +317,15 @@ i32 main(i32 const argc, char const * const * argv)
 		TracyFrameMark;
 	}
 
-	srat::image_destroy(imageColor);
-	srat::image_destroy(sratImageDepth);
+	srat::gfx::device_destroy(device);
+	srat::gfx::image_destroy(imageColor);
+	srat::gfx::image_destroy(sratImageDepth);
 	SRAT_CLEAN_EXIT();
 
 	// raylib destroy
+	UnloadImage(img);
 	UnloadTexture(tex);
-	raylib_shutdown();
 	rlImGuiShutdown();
-	CloseWindow();
+	raylib_shutdown();
 	return 0;
 }

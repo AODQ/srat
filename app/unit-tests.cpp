@@ -1,6 +1,6 @@
-#include <srat/types.hpp>
+#include <srat/core-types.hpp>
 
-#include <srat/virtual-range-allocator.hpp>
+#include <srat/alloc-virtual-range.hpp>
 
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>

@@ -1,6 +1,8 @@
-#include <srat/types.hpp>
-#include <srat/image.hpp>
+#include <srat/core-types.hpp>
+#if 0
+#include <srat/gfx-image.hpp>
 #include <srat/rasterizer.hpp>
-#include <srat/math.hpp>
+#include <srat/core-math.hpp>
 
 #include <doctest/doctest.h>
+#endif
