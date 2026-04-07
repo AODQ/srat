@@ -38,10 +38,6 @@ void srat::rasterizer_reference_render(
 		if (minX > maxX || minY > maxY) continue;
 
 		f32 const area = f32v2_triangle_area(v0, v1, v2);
-		printf("Vertex: tri %u screen0=(%d, %d) depth0=%.4f perspw0=%.4f\n",
-			(unsigned int)(&tri - triangles.ptr()),
-			tri.screenPos[0].x, tri.screenPos[0].y, tri.depth[0], tri.perspectiveW[0]
-		);
 		if (area <= 0.0001f) continue; // backface or degenerate
 
 		f32 const rcpArea = 1.0f / area;
