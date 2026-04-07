@@ -6,7 +6,11 @@ namespace srat::gfx {
 
 	struct Device { u64 id; };
 
-	Device device_create();
+	struct DeviceCreateInfo {
+		bool referenceMode { false };
+	};
+
+	Device device_create(DeviceCreateInfo const & createInfo);
 	void device_destroy(Device const & device);
 
 } // namespace srat::gfx

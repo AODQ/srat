@@ -98,7 +98,7 @@ public:
 
 	// -- convenience
 	constexpr void splat(T const & value) {
-		for (Mut i = 0zu; i < elemCount; ++i) { data[i] = value; }
+		for (auto i = 0zu; i < elemCount; ++i) { data[i] = value; }
 	}
 	constexpr slice<T> subslice(
 		size_t const offset,

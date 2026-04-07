@@ -2,9 +2,10 @@
 
 #include <srat/core-handle.hpp>
 #include <srat/core-math.hpp>
-#include <srat/rasterizer-phase-rasterize.hpp>
 #include <srat/rasterizer-phase-bin.hpp>
+#include <srat/rasterizer-phase-rasterize.hpp>
 #include <srat/rasterizer-phase-vertex.hpp>
+#include <srat/rasterizer-reference.hpp>
 
 #include "internal-gfx-device.hpp"
 
@@ -81,8 +82,13 @@ void sgfx::command_buffer_submit(
 	static std::vector<triangle_perspective_w_t> cachedAttrPerspW;
 	static std::vector<triangle_color_t> cachedAttrColor;
 
+	cachedAttrPos.clear();
+	cachedAttrDepth.clear();
+	cachedAttrPerspW.clear();
+	cachedAttrColor.clear();
+
 	// -- precalculate cached allocations
-	Mut numTriangles = 0u;
+	auto numTriangles = 0u;
 	for (srat::gfx::DrawInfo const & drawCommand : impl.drawCommands) {
 		SRAT_ASSERT(drawCommand.indexCount % 3 == 0);
 		numTriangles += drawCommand.indexCount / 3u;
@@ -140,7 +146,7 @@ void sgfx::command_buffer_submit(
 
 	// -- compute cached triangle through vertex phase
 	{
-		Mut numAttrs = 0u;
+		auto numAttrs = 0u;
 		for (srat::gfx::DrawInfo const & drawCommand : impl.drawCommands) {
 			SRAT_ASSERT(numTriangles*3 >= numAttrs);
 			srat::rasterizer_phase_vertex(RasterizerStageVertexParams {
@@ -154,6 +160,48 @@ void sgfx::command_buffer_submit(
 			});
 			SRAT_ASSERT(numTriangles*3 >= numAttrs);
 		}
+	}
+
+	// if in reference mode then call reference rasterizer and return early
+	if (srat::gfx::device_reference_mode(device)) {
+		auto attrIdx = 0u;
+		std::vector<srat::ReferenceTriangle> referenceTriangles;
+		for (srat::gfx::DrawInfo const & drawCommand : impl.drawCommands) {
+			for (auto triIt = 0u; triIt < drawCommand.indexCount / 3u; ++triIt) {
+				u32 const base = attrIdx;
+				attrIdx += 3;
+
+				referenceTriangles.emplace_back(srat::ReferenceTriangle {
+					.screenPos = {
+						cachedAttrPosSlice[base + 0],
+						cachedAttrPosSlice[base + 1],
+						cachedAttrPosSlice[base + 2],
+					},
+					.depth = {
+						cachedAttrDepthSlice[base + 0],
+						cachedAttrDepthSlice[base + 1],
+						cachedAttrDepthSlice[base + 2],
+					},
+					.perspectiveW = {
+						cachedAttrPerspWSlice[base + 0],
+						cachedAttrPerspWSlice[base + 1],
+						cachedAttrPerspWSlice[base + 2],
+					},
+					.color = {
+						cachedAttrColorSlice[base + 0],
+						cachedAttrColorSlice[base + 1],
+						cachedAttrColorSlice[base + 2],
+					},
+				});
+			}
+		}
+		srat::rasterizer_reference_render(
+			srat::slice(referenceTriangles.data(), referenceTriangles.size()),
+			impl.viewport,
+			impl.targetColor,
+			impl.targetDepth
+		);
+		return;
 	}
 
 	// -- bin triangle data into tile grid

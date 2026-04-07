@@ -142,8 +142,8 @@ static void bin_triangle(
 		triangleIndex = posPtr - std::get<0>(impl.tileTriangleAllocator.data_ptr());
 	}
 #endif
-	for (Mut tbx = i32{tileMapping.min.x}; tbx < tileMapping.max.x; ++ tbx)
-	for (Mut tby = i32{tileMapping.min.y}; tby < tileMapping.max.y; ++ tby) {
+	for (auto tbx = i32{tileMapping.min.x}; tbx < tileMapping.max.x; ++ tbx)
+	for (auto tby = i32{tileMapping.min.y}; tby < tileMapping.max.y; ++ tby) {
 		Let tileIndex = u32 { tby*impl.tileCount.x + tbx };
 		bin_tile_triangle(
 			impl, tileIndex,

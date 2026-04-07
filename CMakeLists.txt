@@ -73,6 +73,12 @@ option(LEGACY "Instead of Wayland, use the legacy X11 backend on Linux" ON)
 add_subdirectory(external/tracy)
 
 # ------------------------------------------------------------------------------
+# -- tinyobjloader
+# ------------------------------------------------------------------------------
+
+add_subdirectory(external/tinyobjloader)
+
+# ------------------------------------------------------------------------------
 # -- raylib
 # ------------------------------------------------------------------------------
 
@@ -118,6 +124,7 @@ add_library(
 	srat/src/rasterizer-phase-rasterize.cpp
 	srat/src/rasterizer-phase-vertex.cpp
 	srat/src/rasterizer-tile-grid.cpp
+	srat/src/rasterizer-reference.cpp
 )
 set_target_properties(
 	srat
@@ -143,10 +150,10 @@ target_include_directories(
 target_compile_options(
 	srat
 	PRIVATE
-	-Wall -Wextra -Wpedantic -mavx2 -mfma -fno-rtti -fno-exceptions
+	-Wextra -Wpedantic -mavx2 -mfma -fno-rtti -fno-exceptions
 	$<$<CONFIG:Debug>:-O0 -g3 -ggdb>
-	$<$<CONFIG:RelWithDebInfo>:-O2 -g3 -ggdb -fno-omit-frame-pointer>
-	$<$<CONFIG:Release>:-O3>
+	$<$<CONFIG:RelWithDebInfo>:-O2 -g3 -ggdb -fno-omit-frame-pointer -Wall>
+	$<$<CONFIG:Release>:-O3 -Wall>
 	${snort_sanitize_flags}
 	INTERFACE -mavx2 -mfma
 	#-DTRACY_ENABLE
@@ -182,6 +189,7 @@ target_sources(
 	app
 	PRIVATE
 	app/source.cpp
+	app/tinyobjloader.cpp
 	app/unit-test-alloc-arena.cpp
 	app/unit-test-alloc-virtual-range.cpp
 	app/unit-test-core-array.cpp
@@ -197,7 +205,7 @@ target_include_directories(
 	PRIVATE
 	external/doctest
 )
-target_link_libraries(app PRIVATE srat raylib imgui)
+target_link_libraries(app PRIVATE srat raylib imgui tinyobjloader)
 target_link_options(
 	app
 	PRIVATE
@@ -206,7 +214,12 @@ target_link_options(
 	$<$<CONFIG:RelWithDebInfo>:${snort_linker_flags}>
 	${snort_sanitize_flags}
 )
-target_compile_options(app PRIVATE -Wall -Wextra -Wpedantic)
+# in general for app don't care about warnings or performance issues or anything
+# since it's just a testbed for the rasterizer
+target_compile_options(
+	app PRIVATE
+	-Wextra -Wpedantic
+)
 set_target_properties(
 	app
 	PROPERTIES

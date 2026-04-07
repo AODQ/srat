@@ -102,7 +102,7 @@ srat::TileTriangleData const & srat::tile_grid_triangle_data(
 }
 
 void srat::tile_grid_clear(TileGrid const & grid) {
-	Ref impl = *sTileGridPool.get(grid);
+	auto & impl = *sTileGridPool.get(grid);
 	impl.triangles.clear();
 	for (auto & bin : impl.bins) {
 		bin.triangleIndices.clear();
@@ -113,7 +113,7 @@ void srat::tile_grid_bin_triangle_bbox(
 	TileGrid & grid,
 	srat::TileTriangleData const & triangleData
 ) {
-	Ref impl = *sTileGridPool.get(grid);
+	auto & impl = *sTileGridPool.get(grid);
 	Let kTileDim = u64{srat_tile_size()};
 
 	Let bounds = i32bbox2 {
@@ -153,14 +153,14 @@ void srat::tile_grid_bin_triangle_bbox(
 		return impl.triangles.size() - 1;
 	}();
 
-	for (Mut y = i32{minTile.y}; y <= maxTile.y; ++y)
-	for (Mut x = i32{minTile.x}; x <= maxTile.x; ++x) {
+	for (auto y = i32{minTile.y}; y <= maxTile.y; ++y)
+	for (auto x = i32{minTile.x}; x <= maxTile.x; ++x) {
 		tile_grid_bin_triangle(grid, u32v2(x, y), triangleIndex);
 	};
 }
 
 srat::TileBin & srat::tile_grid_bin(TileGrid const & grid, u32v2 const & tile) {
-	Ref impl = *sTileGridPool.get(grid);
+	auto & impl = *sTileGridPool.get(grid);
 	Let tileIndex = u32 {(tile.y * impl.tileCountX) + tile.x};
 	SRAT_ASSERT(tileIndex < (impl.tileCountX * impl.tileCountY));
 	return impl.bins[tileIndex];

@@ -11,6 +11,7 @@
 
 namespace {
 	struct ImplDevice {
+		bool referenceMode { false };
 		srat::TileGrid tileGrid;
 	};
 
@@ -23,8 +24,13 @@ namespace {
 // -- public api
 // -----------------------------------------------------------------------------
 
-srat::gfx::Device srat::gfx::device_create() {
-	Let impl = ImplDevice { };
+srat::gfx::Device srat::gfx::device_create(
+	DeviceCreateInfo const & createInfo
+) {
+	Let impl = ImplDevice {
+		.referenceMode = createInfo.referenceMode,
+		.tileGrid = srat::TileGrid {0},
+	};
 	return sDevicePool.allocate(impl);
 }
 
@@ -62,6 +68,12 @@ void srat::gfx::device_prepare_draw(
 			.imageHeight = viewport.dim.y,
 		});
 	}
+}
+
+bool srat::gfx::device_reference_mode(Device const & device) {
+	Let impl = sDevicePool.get(device);
+	SRAT_ASSERT(impl != nullptr);
+	return impl->referenceMode;
 }
 
 srat::TileGrid & srat::gfx::device_tile_grid(Device const & device) {

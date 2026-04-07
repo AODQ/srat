@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <numbers>
 
+
 static constexpr i32v2 kWindowDim = { 512, 512 };
 static bool animationEnabled = true;
 
@@ -31,9 +32,162 @@ void raylib_shutdown()
 	CloseWindow();
 }
 
+// generates a command buffer to draw for with a model
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"
+#pragma GCC diagnostic ignored "-Wunused-function"
+#include "tinyobjloader.h"
+#pragma GCC diagnostic pop
+
+struct SratModel {
+	std::vector<f32v3> positions;
+	std::vector<f32v4> colors;
+	std::vector<f32v3> normals;
+	std::vector<f32v2> uvcoords;
+	struct Mesh {
+		std::vector<u32> indices;
+		srat::gfx::DrawInfo drawInfo;
+	};
+	std::vector<Mesh> meshes;
+
+	f32v3 boundsMin { FLT_MAX, FLT_MAX, FLT_MAX };
+	f32v3 boundsMax { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+
+	[[nodiscard]] f32v3 center() const { return (boundsMin + boundsMax) * 0.5f; }
+	[[nodiscard]] f32v3 size() const { return boundsMax - boundsMin; }
+};
+
+// ai slop camera orbit
+f32m44 compute_orbit_view(const SratModel& model, f32 time)
+{
+	f32v3 const center = model.center();
+	f32v3 const size   = model.size();
+	f32 const maxDim = f32_max(size.x, f32_max(size.y, size.z));
+	f32 const radius = maxDim * 1.2f;
+
+	// Camera position orbiting in XZ plane, slightly above center
+	f32 const camX = center.x + radius * cosf(time);
+	f32 const camZ = center.z + radius * sinf(time);
+	f32 const camY = center.y + maxDim * 0.3f;   // look slightly from above
+
+	auto const eye = f32v3{camX, camY, camZ};
+	f32v3 const target = center;
+	auto const up = f32v3{0.0f, 1.0f, 0.0f};
+
+	return f32m44_lookat(eye, target, up);
+}
+
+SratModel loadModel(char const * objPath) {
+	SratModel model {};
+	tinyobj::ObjReaderConfig readerConfig;
+	readerConfig.mtl_search_path = "./"; // Path to material files
+	tinyobj::ObjReader reader;
+
+	if (!reader.ParseFromFile(objPath, readerConfig)) {
+		if (!reader.Error().empty()) {
+			fprintf(stderr, "TinyObjReader: %s\n", reader.Error().c_str());
+		}
+		exit(1);
+	}
+
+	if (!reader.Warning().empty()) {
+		fprintf(stderr, "TinyObjReader: %s\n", reader.Warning().c_str());
+	}
+
+	auto & attrib = reader.GetAttrib();
+	auto & shapes = reader.GetShapes();
+	[[maybe_unused]] auto & materials = reader.GetMaterials();
+
+	// -- loop over attributes and store them
+	for (size_t v = 0; v < attrib.vertices.size() / 3; ++v) {
+		model.positions.emplace_back(
+			attrib.vertices[3*v+0],
+			attrib.vertices[3*v+1],
+			attrib.vertices[3*v+2]
+		);
+	}
+	for (size_t v = 0; v < attrib.normals.size() / 3; ++v) {
+		model.normals.emplace_back(
+			attrib.normals[3*v+0],
+			attrib.normals[3*v+1],
+			attrib.normals[3*v+2]
+		);
+	}
+	for (size_t v = 0; v < attrib.texcoords.size() / 2; ++v) {
+		model.uvcoords.emplace_back(
+			attrib.texcoords[2*v+0],
+			attrib.texcoords[2*v+1]
+		);
+	}
+	for (size_t v = 0; v < attrib.colors.size() / 3; ++v) {
+		// emplace a random color
+		model.colors.emplace_back(
+			rand() / (f32)RAND_MAX, // random red
+			rand() / (f32)RAND_MAX, // random red
+			rand() / (f32)RAND_MAX, // random red
+			1.f // alpha
+		);
+	}
+
+
+	auto vec2slice = [](auto & arr) -> srat::slice<u8 const> {
+		return srat::slice(arr.data(), arr.size()).template cast<u8 const>();
+	};
+
+	auto const & modelSlice = vec2slice(model.positions);
+	auto const & colorSlice = vec2slice(model.colors);
+	auto const & normalSlice = vec2slice(model.normals);
+	auto const & uvSlice = vec2slice(model.uvcoords);
+
+	// -- loop shapes
+	for (const auto & shape : shapes) {
+
+		SratModel::Mesh mesh{};
+
+		for (auto const & index : shape.mesh.indices) {
+			mesh.indices.push_back(index.vertex_index);
+		}
+
+		mesh.drawInfo = srat::gfx::DrawInfo {
+			.modelViewProjection = f32m44_identity(),
+			.vertexAttributes = {
+				.position = {
+					.byteStride = sizeof(f32v3),
+					.data = modelSlice,
+				},
+				.color = {
+					.byteStride = sizeof(f32v4),
+					.data = colorSlice,
+				},
+				.normal = {
+					.byteStride = sizeof(f32v3),
+					.data = normalSlice,
+				},
+				.uv = {
+					.byteStride = sizeof(f32v2),
+					.data = uvSlice,
+				},
+			},
+			.indices = vec2slice(mesh.indices).cast<u32 const>(),
+			.indexCount = (u32)mesh.indices.size(),
+		};
+
+		model.meshes.emplace_back(std::move(mesh));
+	}
+
+	// -- calculate bounds
+	for (const auto & pos : model.positions) {
+		model.boundsMin = f32v3_min(model.boundsMin, pos);
+		model.boundsMax = f32v3_max(model.boundsMax, pos);
+	}
+
+	return model;
+}
+
 // just a placeholder function
 void draw_scene(
 	srat::gfx::Device const & device,
+	SratModel const & model,
 	f32 const deltaTime,
 	srat::gfx::Image const & target,
 	srat::gfx::Image const & depthTarget
@@ -54,37 +208,18 @@ void draw_scene(
 		depthPtr[i] = UINT16_MAX; // max depth
 	}
 
-	static constexpr srat::array<f32v3, 8> kCubeVerts = {{
-		{ -1.f, -1.f, -1.f, },
-		{  1.f, -1.f, -1.f, },
-		{  1.f,  1.f, -1.f, },
-		{ -1.f,  1.f, -1.f, },
-		{ -1.f, -1.f,  1.f, },
-		{  1.f, -1.f,  1.f, },
-		{  1.f,  1.f,  1.f, },
-		{ -1.f,  1.f,  1.f, },
-	}};
 
-	static constexpr srat::array<f32v4, 12> kCubeColors = {{
-		{ 1.f, 0.f, 0.f, 1.0f, }, { 1.f, 0.f, 0.f, 1.0f, },
-		{ 1.f, 0.f, 0.f, 1.0f, }, { 0.f, 1.f, 0.f, 1.0f, },
-		{ 0.f, 1.f, 0.f, 1.0f, }, { 0.f, 1.f, 0.f, 1.0f, },
-		{ 0.f, 0.f, 1.f, 1.0f, }, { 0.f, 0.f, 1.f, 1.0f, },
-		{ 0.f, 0.f, 1.f, 1.0f, }, { 1.f, 1.f, 0.f, 1.0f, },
-		{ 1.f, 1.f, 0.f, 1.0f, }, { 1.f, 1.f, 0.f, 1.0f, },
-	}};
-
-	static constexpr srat::array<u32, 36u> kCubeTriInds = {{
-		0, 1, 2, 0, 2, 3, // back
-		4, 6, 5, 4, 7, 6, // front
-		0, 4, 5, 0, 5, 1, // bottom
-		3, 2, 6, 3, 6, 7, // top
-		1, 5, 6, 1, 6, 2, // right
-		0, 3, 7, 0, 7, 4, // left
-	}};
-
-	// build modelviewproj
-	f32 const time = animationEnabled ? fmodf(deltaTime, 1000.f) : 0.f;
+	// -- build modelviewproj
+	// f32 const time = animationEnabled ? fmodf(deltaTime, 1000.f) : 0.f;
+	f32m44 const proj = f32m44_perspective(
+		90.f * (std::numbers::pi_v<float> / 180.f), /*aspect=*/ 1.0f, 0.1f, 500.0f
+	);
+	f32v3 const center = model.center();
+	f32v3 const size = model.size();
+	// rotate around the center of the model, and move back so it's visible
+	f32m44 const view = compute_orbit_view(model, deltaTime);
+	f32m44 const modelViewProj = proj * view;
+	// -- record command buffer
 	srat::gfx::CommandBuffer cmdBuf = srat::gfx::command_buffer_create();
 	srat::gfx::command_buffer_bind_framebuffer(
 		cmdBuf,
@@ -95,56 +230,20 @@ void draw_scene(
 		target,
 		depthTarget
 	);
-	static constexpr i32 kGridX = 1;
-	static constexpr i32 kGridY = 1;
-	static constexpr i32 kGridZ = 1;
-	// kGridX * kGridY * kGridZ = 16384
 
-	for (i32 cube = 0; cube < kGridX * kGridY * kGridZ; ++cube) {
-		i32 const cx = cube % kGridX;
-		i32 const cy = (cube / kGridX) % kGridY;
-		i32 const cz = cube / (kGridX * kGridY);
-		f32m44 const model = (
-		  f32m44_rotate_y(time * 0.5f)
-		* f32m44_rotate_x(time * 0.25f)
-		* f32m44_translate(
-			((f32)cx - kGridX * 0.5f) * 2.5f,
-			((f32)cy - kGridY * 0.5f) * 2.5f,
-			((f32)cz - kGridZ * 0.5f) * 2.5f
-		)
-	);
-	f32m44 const view = f32m44_translate(0.f, 0.f, -10.0f);
-	f32m44 const proj = f32m44_perspective(
-		90.f * (std::numbers::pi_v<float> / 180.f), /*aspect=*/ 1.0f, 0.1f, 5000.0f
-	);
-	f32m44 const modelViewProj = proj * view * model;
-
-	// -- rasterize 12 triangles
-	srat::gfx::VertexAttributes const attributes = {
-		.position = {
-			.byteStride = sizeof(f32v3),
-			.data = srat::slice(kCubeVerts).cast<u8 const>(),
-		},
-		.color = {
-			.byteStride = sizeof(f32v4),
-			.data = srat::slice(kCubeColors).cast<u8 const>(),
-		},
-		.normal = {},
-		.uv = {},
-	};
-
-	srat::gfx::command_buffer_draw(cmdBuf, srat::gfx::DrawInfo {
-		.modelViewProjection = modelViewProj,
-		.vertexAttributes = attributes,
-		.indices = srat::slice(kCubeTriInds).cast<u32 const>(),
-		.indexCount = 12*3,
-	});
+	for (auto & mesh : model.meshes) {
+		srat::gfx::DrawInfo const & drawInfo = mesh.drawInfo;
+		srat::gfx::command_buffer_draw(cmdBuf, srat::gfx::DrawInfo {
+			.modelViewProjection = modelViewProj,
+			.vertexAttributes = drawInfo.vertexAttributes,
+			.indices = drawInfo.indices,
+			.indexCount = drawInfo.indexCount,
+		});
 	}
+
 	srat::gfx::command_buffer_submit(device, cmdBuf);
 	srat::gfx::command_buffer_destroy(cmdBuf);
 }
-
-// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 
@@ -173,7 +272,10 @@ i32 main(i32 const argc, char const * const * argv)
 		})
 	);
 
-	srat::gfx::Device const device = srat::gfx::device_create();
+	srat::gfx::Device const device = srat::gfx::device_create({
+		.referenceMode = true,
+	});
+	SratModel model = loadModel("assets/suzanne.obj");
 
 	while (!WindowShouldClose())
 	{
@@ -182,7 +284,7 @@ i32 main(i32 const argc, char const * const * argv)
 
 		// -- here is the srat hookup
 		// just draw triangle from 0,0->kWindowDim,0->256,kWindowDim
-		draw_scene(device, (f32)GetTime(), imageColor, sratImageDepth);
+		draw_scene(device, model, (f32)GetTime(), imageColor, sratImageDepth);
 
 		// lastly copy srat data into raylib texture
 		UpdateTexture(tex, srat::gfx::image_data8(imageColor).ptr());

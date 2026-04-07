@@ -69,6 +69,11 @@ struct f32v2 {
 	f32 x, y;
 
 	f32v2 operator /(f32v2 const s) const { return { x/s.x, y/s.y, }; }
+	f32v2 operator /(f32 const s) const { return { x/s, y/s, }; }
+	f32v2 operator -(f32v2 const s) const { return { x-s.x, y-s.y, }; }
+	f32v2 operator +(f32v2 const s) const { return { x+s.x, y+s.y, }; }
+	f32v2 operator *(f32v2 const s) const { return { x*s.x, y*s.y, }; }
+	f32v2 operator *(f32 const s) const { return { x*s, y*s, }; }
 };
 
 // -----------------------------------------------------------------------------
@@ -82,7 +87,34 @@ struct f32v3 {
 
 	f32v3 operator /(f32v3 const s) const { return { x/s.x, y/s.y, z/s.z, }; }
 	f32v3 operator /(f32 const s) const { return { x/s, y/s, z/s, }; }
+	f32v3 operator -(f32v3 const s) const { return { x-s.x, y-s.y, z-s.z, }; }
+	f32v3 operator +(f32v3 const s) const { return { x+s.x, y+s.y, z+s.z, }; }
+	f32v3 operator *(f32v3 const s) const { return { x*s.x, y*s.y, z*s.z, }; }
+	f32v3 operator *(f32 const s) const { return { x*s, y*s, z*s, }; }
 };
+
+[[nodiscard]] constexpr inline f32v3 f32v3_normalize(f32v3 const v) {
+	f32 const lenSq = v.x*v.x + v.y*v.y + v.z*v.z;
+	if (lenSq > 0.0f) {
+		f32 const invLen = 1.0f / std::sqrtf(lenSq);
+		return { v.x*invLen, v.y*invLen, v.z*invLen };
+	}
+	else {
+		return { 0.0f, 0.0f, 0.0f };
+	}
+}
+
+[[nodiscard]] constexpr inline f32 f32v3_dot(f32v3 const a, f32v3 const b) {
+	return a.x*b.x + a.y*b.y + a.z*b.z;
+}
+
+[[nodiscard]] constexpr inline f32v3 f32v3_cross(f32v3 const a, f32v3 const b) {
+	return {
+		a.y*b.z - a.z*b.y,
+		a.z*b.x - a.x*b.z,
+		a.x*b.y - a.y*b.x
+	};
+}
 
 // -----------------------------------------------------------------------------
 // -- f32v4
@@ -99,8 +131,27 @@ struct f32v4 {
 	[[nodiscard]] constexpr f32v2 xy() const { return { x, y }; }
 	[[nodiscard]] constexpr f32v3 xyz() const { return { x, y, z }; }
 
-	constexpr f32v4 operator /(f32v4 const s) const {
+	[[nodiscard]] constexpr f32v4 operator /(f32v4 const s) const {
 		return { x/s.x, y/s.y, z/s.z, w/s.w };
+	}
+	[[nodiscard]] constexpr f32v4 operator /(f32 const s) const {
+		return { x/s, y/s, z/s, w/s };
+	}
+	[[nodiscard]] constexpr f32v4 operator -(f32v4 const s) const {
+		return { x-s.x, y-s.y, z-s.z, w-s.w };
+	}
+	[[nodiscard]] constexpr f32v4 operator +(f32v4 const s) const {
+		return { x+s.x, y+s.y, z+s.z, w+s.w };
+	}
+	[[nodiscard]] constexpr f32v4 operator *(f32v4 const s) const {
+		return { x*s.x, y*s.y, z*s.z, w*s.w };
+	}
+	[[nodiscard]] constexpr f32v4 operator *(f32 const s) const {
+		return { x*s, y*s, z*s, w*s };
+	}
+	constexpr f32v4 operator+=(f32v4 const s) {
+		x += s.x; y += s.y; z += s.z; w += s.w;
+		return *this;
 	}
 };
 
@@ -227,6 +278,25 @@ inline f32x8 f32x8_min(f32x8 const & a, f32x8 const & b)
 	{ return { _mm256_min_ps(a.v, b.v) }; }
 inline f32x8 f32x8_max(f32x8 const & a, f32x8 const & b)
 	{ return { _mm256_max_ps(a.v, b.v) }; }
+
+[[nodiscard]] constexpr inline f32v3 f32v3_min(
+	f32v3 const & a, f32v3 const & b
+) {
+	return {
+		std::fminf(a.x, b.x),
+		std::fminf(a.y, b.y),
+		std::fminf(a.z, b.z),
+	};
+}
+[[nodiscard]] constexpr inline f32v3 f32v3_max(
+	f32v3 const & a, f32v3 const & b
+) {
+	return {
+		std::fmaxf(a.x, b.x),
+		std::fmaxf(a.y, b.y),
+		std::fmaxf(a.z, b.z),
+	};
+}
 
 // sqrt
 inline f32x8 f32x8_sqrt(f32x8 const & v) { return { _mm256_sqrt_ps(v.v) }; }
@@ -491,6 +561,27 @@ inline f32m44 f32m44_perspective(
 		0.0f,       0.0f, -(zFar + zNear) / d,        -1.0f,
 		0.0f,       0.0f, -(2.0f * zFar * zNear) / d,  0.0f,
 	};
+}
+
+[[nodiscard]] inline constexpr f32m44 f32m44_lookat(
+	f32v3 const & eye, f32v3 const & target, f32v3 const & up
+) {
+	f32v3 const z = f32v3_normalize(eye - target);
+	f32v3 const x = f32v3_normalize(f32v3_cross(up, z));
+	f32v3 const y = f32v3_cross(z, x);
+
+	f32m44 m = f32m44_identity();
+
+	m.m[0] = x.x; m.m[1] = y.x; m.m[2]  = z.x; m.m[3]  = 0.0f;
+	m.m[4] = x.y; m.m[5] = y.y; m.m[6]  = z.y; m.m[7]  = 0.0f;
+	m.m[8] = x.z; m.m[9] = y.z; m.m[10] = z.z; m.m[11] = 0.0f;
+
+	m.m[12] = -f32v3_dot(x, eye);
+	m.m[13] = -f32v3_dot(y, eye);
+	m.m[14] = -f32v3_dot(z, eye);
+	m.m[15] = 1.0f;
+
+	return m;
 }
 
 // -----------------------------------------------------------------------------

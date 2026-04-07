@@ -10,7 +10,7 @@ void srat::rasterizer_phase_bin(
 	RasterizerPhaseBinParams const & params
 ) {
 	Let triangleCount = params.trianglePositions.size() / 3;
-	for (Mut triIt = 0u; triIt < triangleCount; ++triIt) {
+	for (auto triIt = 0u; triIt < triangleCount; ++triIt) {
 		Let triData = srat::TileTriangleData {
 			.screenPos = {
 				params.trianglePositions[(triIt*3) + 0],

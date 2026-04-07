@@ -135,7 +135,7 @@ void AllocImplVirtualRangeData::sortFreeList()
 	u32 sortedHead = skFreeListEnd;
 	u32 it = freelist.freeListHeadIndex;
 	while (it != skFreeListEnd) {
-		Ref currBlock = freelist.allocatedBlocks[it];
+		auto & currBlock = freelist.allocatedBlocks[it];
 		Let nextIt = u32 { currBlock.nextFreeIndex };
 		// insert current block into sorted list
 		if (
@@ -154,7 +154,7 @@ void AllocImplVirtualRangeData::sortFreeList()
 		// insert into middle or end of sorted list
 		u32 sortedIt = sortedHead;
 		while (true) {
-			Ref sortedBlock = freelist.allocatedBlocks[sortedIt];
+			auto & sortedBlock = freelist.allocatedBlocks[sortedIt];
 			Let sortedNext = u32 { sortedBlock.nextFreeIndex };
 			if (
 					sortedNext == skFreeListEnd
@@ -298,7 +298,7 @@ void srat::AllocVirtualRange::moveFrom(AllocVirtualRange & o)
 	// apply the move constructor to the internal debugging data
 #if SRAT_DEBUG()
 	{
-		Mut it = allocators().find(&o);
+		auto it = allocators().find(&o);
 		// this can be either a move or from first creation
 		if (it != allocators().end()) {
 			allocators().erase(it);
@@ -420,12 +420,12 @@ srat::AllocVirtualRangeBlock virtual_range_freelist_allocate(
 	srat::AllocVirtualRangeParams const & request
 ) {
 	// -- walk the free list to find a block that can satisfy the request
-	Mut prevFreeIndex = u32 { skFreeListEnd } ;
-	Mut freeIndex = u32 { self.freelist.freeListHeadIndex };
-	Ref freelist = self.freelist;
+	u32 prevFreeIndex = skFreeListEnd;
+	u32 freeIndex = self.freelist.freeListHeadIndex;
+	auto & freelist = self.freelist;
 	while (freeIndex != skFreeListEnd) {
 		// check if the current free block can satisfy the request
-		Ref freeBlock = freelist.allocatedBlocks[freeIndex];
+		auto & freeBlock = freelist.allocatedBlocks[freeIndex];
 		Let alignedOffset = u64 {
 			srat::alignUp(freeBlock.elementOffset, request.elementAlignment)
 		};
@@ -466,7 +466,7 @@ srat::AllocVirtualRangeBlock virtual_range_freelist_allocate(
 			freeBlock.nextFreeIndex = skFreeListEnd;
 		}
 		// -- create a new allocated block for the allocated range
-		Mut allocatedIndex = 1u;
+		auto allocatedIndex = 1u;
 		for (; allocatedIndex < freelist.maxBlockAllocations; ++allocatedIndex) {
 			if (self.isDead(allocatedIndex)) {
 				break;
@@ -510,7 +510,7 @@ void virtual_range_freelist_free(
 	AllocImplVirtualRangeData & self,
 	u64 const handle
 ) {
-	Ref freelist = self.freelist;
+	auto & freelist = self.freelist;
 	Let block = srat::AllocVirtualRangeBlock {
 		.elementCount = 0, // not needed for free
 		.elementOffset = 0, // not needed for free
@@ -518,7 +518,7 @@ void virtual_range_freelist_free(
 	};
 	if (!block.valid(selfAlloc)) { return; }
 	Let blockIndex = u32{srat::handle_index(block.handle)};
-	Ref blockInternal = freelist.allocatedBlocks[blockIndex];
+	auto & blockInternal = freelist.allocatedBlocks[blockIndex];
 
 	// -- increment the generation to invalidate the block's handle
 	// but need to increment twice to keep in an alive state
@@ -538,10 +538,10 @@ void virtual_range_freelist_free(
 
 	// -- coalesce adjacent free blocks in the free list
 	for (u32 it = freelist.freeListHeadIndex; it != skFreeListEnd;) {
-		Ref currentBlock = freelist.allocatedBlocks[it];
+		auto & currentBlock = freelist.allocatedBlocks[it];
 		Let nextIndex = u32 {currentBlock.nextFreeIndex};
 		if (nextIndex != skFreeListEnd) {
-			Ref nextBlock = freelist.allocatedBlocks[nextIndex];
+			auto & nextBlock = freelist.allocatedBlocks[nextIndex];
 			if (
 				currentBlock.elementOffset + currentBlock.elementCount ==
 				nextBlock.elementOffset
@@ -569,7 +569,7 @@ void virtual_range_freelist_free(
 void virtual_range_freelist_clear(
 	AllocImplVirtualRangeData & self
 ) {
-	Ref freelist = self.freelist;
+	auto & freelist = self.freelist;
 	for (u32 it = 0; it < freelist.maxBlockAllocations; ++it) {
 		// kill alive blocks by incrementing generation
 		if (self.isAlive(it)) {
@@ -622,7 +622,7 @@ bool virtual_range_freelist_empty(
 srat::AllocVirtualRangeBlock srat::AllocVirtualRange::allocate(
 	AllocVirtualRangeParams const & request
 ) {
-	Ref self = AllocatorData(*this);
+	auto & self = AllocatorData(*this);
 	switch (self.strategy) {
 		case AllocVirtualRangeStrategy::FreeList:
 			return virtual_range_freelist_allocate(self, request);
@@ -634,7 +634,7 @@ srat::AllocVirtualRangeBlock srat::AllocVirtualRange::allocate(
 
 void srat::AllocVirtualRange::free(u64 const handle)
 {
-	Ref self = AllocatorData(*this);
+	auto & self = AllocatorData(*this);
 	switch (self.strategy) {
 		case AllocVirtualRangeStrategy::FreeList:
 			return virtual_range_freelist_free(*this, self, handle);
@@ -645,7 +645,7 @@ void srat::AllocVirtualRange::free(u64 const handle)
 
 void srat::AllocVirtualRange::clear()
 {
-	Ref self = AllocatorData(*this);
+	auto & self = AllocatorData(*this);
 	switch (self.strategy) {
 		case AllocVirtualRangeStrategy::FreeList:
 			return virtual_range_freelist_clear(self);
@@ -692,7 +692,7 @@ u64 srat::AllocVirtualRange::allocatedCount() const
 #if SRAT_DEBUG()
 bool srat::alloc_virtual_range_all_empty()
 {
-	for (Mut allocator : allocators()) {
+	for (auto allocator : allocators()) {
 		if (!allocator->empty()) {
 			printf("allocator '%s' not empty\n", allocator->debugName());
 			return false;
@@ -703,7 +703,7 @@ bool srat::alloc_virtual_range_all_empty()
 
 void srat::alloc_virtual_range_verify_all_empty()
 {
-	for (Mut allocator : allocators()) {
+	for (auto allocator : allocators()) {
 		if (!allocator->empty()) {
 			printf(
 				"allocator '%s' not empty\n",

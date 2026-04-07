@@ -7,8 +7,6 @@
 #include <srat/core-types.hpp>
 
 #define Let auto const &
-#define Mut auto
-#define Ref auto &
 
 #define defBinUseIndexCaching true
 
@@ -28,19 +26,6 @@ namespace config {
 // -----------------------------------------------------------------------------
 // -- compile-time configuration
 // -----------------------------------------------------------------------------
-
-// if this is false, then each tile bin will allocate its own triangle memory,
-// without indexing, so an entire triangle copy (pos, depth, etc).
-// in this case the bin allocator will index directly into binAllocatorTriangles
-//
-// with index caching, the bin allocator will store the triangle copy into
-// binAllocatorTriangles as cache, and the bin will index into
-// binAllocatorIndices to fetch triangle data
-//
-// the pay-off is whether it's better performance to make tons of triangle
-// copies (large triangles could span multiple tiles), or to have more
-// indirection with index caching
-#define SRAT_BINNING_USE_INDEX_CACHE() true
 
 // if this is false, binning phase will be a single pass, which might result
 // in additional memory allocation (and copying) during binning

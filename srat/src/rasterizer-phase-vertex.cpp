@@ -29,7 +29,7 @@ void srat::rasterizer_phase_vertex(
 	Let triCount = u32 { params.draw.indexCount / 3u };
 	Let va = srat::gfx::VertexAttributes { params.draw.vertexAttributes };
 
-	for (Mut triIt = 0u; triIt < triCount; ++triIt) {
+	for (auto triIt = 0u; triIt < triCount; ++triIt) {
 		Let i0 = u32{params.draw.indices[triIt*3 + 0]};
 		Let i1 = u32{params.draw.indices[triIt*3 + 1]};
 		Let i2 = u32{params.draw.indices[triIt*3 + 2]};
@@ -62,6 +62,7 @@ void srat::rasterizer_phase_vertex(
 				i32(T_roundf<i32>((1.0f - ndc.y) * 0.5f * (f32)viewportDim.y)),
 			};
 		};
+		printf("ndc0: %f %f %f\n", ndc0.x, ndc0.y, ndc0.z);
 		Let screen0 = i32v2 { ndcToScreen(ndc0) };
 		Let screen1 = i32v2 { ndcToScreen(ndc1) };
 		Let screen2 = i32v2 { ndcToScreen(ndc2) };
@@ -79,9 +80,9 @@ void srat::rasterizer_phase_vertex(
 		params.outPositions[outAttrIdx + 0] = screen0;
 		params.outPositions[outAttrIdx + 1] = screen1;
 		params.outPositions[outAttrIdx + 2] = screen2;
-		params.outDepth[outAttrIdx + 0] = ndc0.z;
-		params.outDepth[outAttrIdx + 1] = ndc1.z;
-		params.outDepth[outAttrIdx + 2] = ndc2.z;
+		params.outDepth[outAttrIdx + 0] = (ndc0.z + 1.0f) * 0.5f;
+		params.outDepth[outAttrIdx + 1] = (ndc1.z + 1.0f) * 0.5f;
+		params.outDepth[outAttrIdx + 2] = (ndc2.z + 1.0f) * 0.5f;
 		params.outPerspectiveW[outAttrIdx + 0] = 1.0f / c0.w;
 		params.outPerspectiveW[outAttrIdx + 1] = 1.0f / c1.w;
 		params.outPerspectiveW[outAttrIdx + 2] = 1.0f / c2.w;

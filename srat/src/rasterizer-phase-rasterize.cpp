@@ -1,6 +1,7 @@
 #include <srat/rasterizer-phase-rasterize.hpp>
 
 #include <srat/gfx-image.hpp>
+#include <srat/rasterizer-interpolant.hpp>
 #include <srat/rasterizer-tile-grid.hpp>
 
 static inline void rasterize_tile_write_pixel(
@@ -18,7 +19,7 @@ static inline void rasterize_tile_write_pixel(
 	Let depthData = srat::gfx::image_data16(targetDepth);
 	Let rowDepths = depthData.subslice((y*targetDim.x) + x, 8);
 	// sequential write
-	for (Mut lane = 0; lane < 8; ++lane) {
+	for (auto lane = 0; lane < 8; ++lane) {
 		if (!lanesMask[lane]) { continue; }
 		i32 const pixelX = x + lane;
 		if (pixelX < 0 || pixelX >= (i32)targetDim.x) { continue; }
@@ -54,162 +55,214 @@ static void rasterize_triangle(
 	srat::gfx::Image const imageDepth
 ) {
 	u32v2 const targetDim = srat::gfx::image_dim(imageColor);
-	Let tri = srat::tile_grid_triangle_data(tileGrid, tileBin.triangleIndices[triIdx]);
-		i32v2 const sp0 = tri.screenPos[0];
-		i32v2 const sp1 = tri.screenPos[1];
-		i32v2 const sp2 = tri.screenPos[2];
-		f32 const d0 = tri.depth[0];
-		f32 const d1 = tri.depth[1];
-		f32 const d2 = tri.depth[2];
-		srat::array<f32, 3> const perspectiveW = {
-			tri.perspectiveW[0],
-			tri.perspectiveW[1],
-			tri.perspectiveW[2]
-		};
-		f32v4 const c0 = tri.color[0];
-		f32v4 const c1 = tri.color[1];
-		f32v4 const c2 = tri.color[2];
+	Let tri = (
+		srat::tile_grid_triangle_data(tileGrid, tileBin.triangleIndices[triIdx])
+	);
+	i32v2 const sp0 = tri.screenPos[0];
+	i32v2 const sp1 = tri.screenPos[1];
+	i32v2 const sp2 = tri.screenPos[2];
+	f32 const d0 = tri.depth[0];
+	f32 const d1 = tri.depth[1];
+	f32 const d2 = tri.depth[2];
+	srat::array<f32, 3> const perspectiveW = {
+		tri.perspectiveW[0],
+		tri.perspectiveW[1],
+		tri.perspectiveW[2]
+	};
+	f32v4 const c0 = tri.color[0];
+	f32v4 const c1 = tri.color[1];
+	f32v4 const c2 = tri.color[2];
 
-		// -- prepare attributes to be interpolated
-		f32v4x8 const v0AttrColor = (
-			f32v4x8_splat(c0) * f32x8_splat(perspectiveW[0])
-		);
-		f32v4x8 const v1AttrColor = (
-			f32v4x8_splat(c1) * f32x8_splat(perspectiveW[1])
-		);
-		f32v4x8 const v2AttrColor = (
-			f32v4x8_splat(c2) * f32x8_splat(perspectiveW[2])
-		);
+	// -- calculate triangle area
+	f32v2 const v0f = as_f32v2(sp0);
+	f32v2 const v1f = as_f32v2(sp1);
+	f32v2 const v2f = as_f32v2(sp2);
+	f32 const area = f32v2_triangle_area(v0f, v1f, v2f);
+	f32 const rcpArea = 1.0f / area;
 
-		// -- calculate triangle area
-		f32v2 const v0f = as_f32v2(sp0);
-		f32v2 const v1f = as_f32v2(sp1);
-		f32v2 const v2f = as_f32v2(sp2);
-		f32 const area = f32v2_triangle_area(v0f, v1f, v2f);
-		f32 const rcpArea = 1.0f / area;
+	// -- bounding box
+	i32bbox2 const bboxTri = i32bbox2_from_triangle(sp0, sp1, sp2);
+	i32bbox2 const bboxImg = {
+		.min = {
+			(i32)tile.x * (i32)srat_tile_size(),
+			(i32)tile.y * (i32)srat_tile_size(),
+		},
+		.max = {
+			(i32)(tile.x+1) * (i32)srat_tile_size() - 1,
+			(i32)(tile.y+1) * (i32)srat_tile_size() - 1
+		},
+	};
+	i32bbox2 const bbox = {
+		.min = {
+			i32_max(bboxTri.min.x, bboxImg.min.x),
+			i32_max(bboxTri.min.y, bboxImg.min.y),
+		},
+		.max = {
+			i32_min(bboxTri.max.x, bboxImg.max.x),
+			i32_min(bboxTri.max.y, bboxImg.max.y),
+		}
+	};
 
-		// -- bounding box
-		i32bbox2 const bboxTri = i32bbox2_from_triangle(sp0, sp1, sp2);
-		i32bbox2 const bboxImg = {
-			.min = {
-				(i32)tile.x * (i32)srat_tile_size(),
-				(i32)tile.y * (i32)srat_tile_size(),
-			},
-			.max = {
-				(i32)(tile.x+1) * (i32)srat_tile_size() - 1,
-				(i32)(tile.y+1) * (i32)srat_tile_size() - 1
-			},
-		};
-		i32bbox2 const bbox = {
-			.min = {
-				i32_max(bboxTri.min.x, bboxImg.min.x),
-				i32_max(bboxTri.min.y, bboxImg.min.y),
-			},
-			.max = {
-				i32_min(bboxTri.max.x, bboxImg.max.x),
-				i32_min(bboxTri.max.y, bboxImg.max.y),
-			}
-		};
+	// -- precompute barycentric interpolations
+	f32 const dw0Dx = (v1f.y - v2f.y);
+	f32 const dw1Dx = (v2f.y - v0f.y);
+	f32 const dw2Dx = (v0f.y - v1f.y);
+	f32 const dw0Dy = (v2f.x - v1f.x);
+	f32 const dw1Dy = (v0f.x - v2f.x);
+	f32 const dw2Dy = (v1f.x - v0f.x);
 
-		// -- precompute barycentric interpolations
-		f32x8 const dw0_dx = f32x8_splat(v1f.y - v2f.y);
-		f32x8 const dw1_dx = f32x8_splat(v2f.y - v0f.y);
-		f32x8 const dw2_dx = f32x8_splat(v0f.y - v1f.y);
-		f32x8 const step = f32x8_splat(8.0f);
-		f32x8 const dw0_step = dw0_dx * step;
-		f32x8 const dw1_step = dw1_dx * step;
-		f32x8 const dw2_step = dw2_dx * step;
+	// -- x offsets for 8 lanes
 
-		// -- x offsets for 8 lanes
-		alignas(32) static srat::array<f32, 8> const laneOffsets = {
-			0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f
-		};
-		f32x8 const laneOffsetsX = f32x8_load(srat::slice<f32, 8>(laneOffsets));
-		f32x8 const startX = (
-			f32x8_splat((f32)(bbox.min.x & ~7) + 0.5f) + laneOffsetsX
-		);
-		for (i32 y = bbox.min.y; y <= bbox.max.y; ++y) {
-			// -- compute barycentrics at start of scanline
-			f32x8 const startY = f32x8_splat((f32)y + 0.5f);
-			f32x8 w0 = f32x8_barycentric(v1f, v2f, startX, startY);
-			f32x8 w1 = f32x8_barycentric(v2f, v0f, startX, startY);
-			f32x8 w2 = f32x8_barycentric(v0f, v1f, startX, startY);
-			auto const & scanline_step = [&]() {
-				w0 = w0 + dw0_step;
-				w1 = w1 + dw1_step;
-				w2 = w2 + dw2_step;
-			};
-			bool anyPixelWritten = false;
+	Let scalarEdge = (
+		[](f32v2 const & a, f32v2 const & b, f32 const x, f32 const y) -> float {
+			return (a.y - b.y) * x + (b.x - a.x) * y + (a.x * b.y - a.y * b.x);
+		}
+	);
 
-			// -- step through scanline in chunks of 8 pixels
-			for (i32 x = bbox.min.x & ~7; x <= bbox.max.x; x += 8) {
-				f32x8 const pixX = (f32x8_splat((f32)x + 0.5f) + laneOffsetsX);
+	f32 const evalX = (f32)(bbox.min.x & ~7) + 0.5f;
+	f32 const evalY = (f32)(bbox.min.y) + 0.5f;
 
-				// -- if all weights are positive, pixel is inside triangle
-				f32x8 const zero = f32x8_zero();
-				u32x8 const inside = (w0 > zero) & (w1 > zero) & (w2 > zero);
+	// -- compute initial barycentrics at start of scanline
+	f32 const w0Start = scalarEdge(v1f, v2f, evalX, evalY);
+	f32 const w1Start = scalarEdge(v2f, v0f, evalX, evalY);
+	f32 const w2Start = scalarEdge(v0f, v1f, evalX, evalY);
 
-				// -- cull lanes beyond image bounds
-				f32x8 const maxX = f32x8_splat((f32)targetDim.x);
-				u32x8 const inBounds = (pixX < maxX);
-				u32x8 const mask = inside & inBounds;
-				// -- reject simdgroup if no pixels are inside the triangle
-				if (!u32x8_any(mask)) {
-					if (anyPixelWritten) {
-						// skip scanline if hit triangle already
-						break;
-					}
-					scanline_step();
-					continue;
+	// top-left fill rule biases
+	Let isTopLeft = [](f32v2 const & a, f32v2 const & b) -> bool {
+		f32v2 const e = b - a;
+		return (e.y == 0.0f && e.x > 0.0f) || (e.y < 0.0f);
+	};
+	f32 const bias0 = isTopLeft(v1f, v2f) ? 0.0f : -0.5f;
+	f32 const bias1 = isTopLeft(v2f, v0f) ? 0.0f : -0.5f;
+	f32 const bias2 = isTopLeft(v0f, v1f) ? 0.0f : -0.5f;
+
+	// -- coverage interpolants
+	f32 w0Row = w0Start + bias0;
+	f32 w1Row = w1Start + bias1;
+	f32 w2Row = w2Start + bias2;
+
+	// -- attribute interpolants (premul by 1/w)
+	// rcpArea folds into ddx/ddy
+	auto color = (
+		srat::Interpolant<f32v4>::make(
+			/*a0=*/ c0 * perspectiveW[0],
+			/*a1=*/ c1 * perspectiveW[1],
+			/*a2=*/ c2 * perspectiveW[2],
+			/*dw0dx=*/ dw0Dx * rcpArea,
+			/*dw1dx=*/ dw1Dx * rcpArea,
+			/*dw2dx=*/ dw2Dx * rcpArea,
+			/*dw0dy=*/ dw0Dy * rcpArea,
+			/*dw1dy=*/ dw1Dy * rcpArea,
+			/*dw2dy=*/ dw2Dy * rcpArea,
+			/*w0Start=*/ w0Start * rcpArea,
+			/*w1Start=*/ w1Start * rcpArea,
+			/*w2Start=*/ w2Start * rcpArea
+		)
+	);
+	auto depth = (
+		srat::Interpolant<f32>::make(
+			/*a0=*/ d0,
+			/*a1=*/ d1,
+			/*a2=*/ d2,
+			/*dw0dx=*/ dw0Dx * rcpArea,
+			/*dw1dx=*/ dw1Dx * rcpArea,
+			/*dw2dx=*/ dw2Dx * rcpArea,
+			/*dw0dy=*/ dw0Dy * rcpArea,
+			/*dw1dy=*/ dw1Dy * rcpArea,
+			/*dw2dy=*/ dw2Dy * rcpArea,
+			/*w0Start=*/ w0Start * rcpArea,
+			/*w1Start=*/ w1Start * rcpArea,
+			/*w2Start=*/ w2Start * rcpArea
+		)
+	);
+	auto invW = (
+		srat::Interpolant<f32>::make(
+			/*a0=*/ perspectiveW[0],
+			/*a1=*/ perspectiveW[1],
+			/*a2=*/ perspectiveW[2],
+			/*dw0dx=*/ dw0Dx * rcpArea,
+			/*dw1dx=*/ dw1Dx * rcpArea,
+			/*dw2dx=*/ dw2Dx * rcpArea,
+			/*dw0dy=*/ dw0Dy * rcpArea,
+			/*dw1dy=*/ dw1Dy * rcpArea,
+			/*dw2dy=*/ dw2Dy * rcpArea,
+			/*w0Start=*/ w0Start * rcpArea,
+			/*w1Start=*/ w1Start * rcpArea,
+			/*w2Start=*/ w2Start * rcpArea
+		)
+	);
+
+	// -- precompute SIMD constants
+	alignas(32) static srat::array<f32, 8> const laneOffsets = {
+		0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f
+	};
+	f32x8 const laneOffsetsX = f32x8_load(srat::slice<f32, 8>(laneOffsets));
+	f32x8 const w0LaneInit = f32x8_splat(dw0Dx) * laneOffsetsX;
+	f32x8 const w1LaneInit = f32x8_splat(dw1Dx) * laneOffsetsX;
+	f32x8 const w2LaneInit = f32x8_splat(dw2Dx) * laneOffsetsX;
+	f32x8 const w0Step8 = f32x8_splat(dw0Dx * 8.0f);
+	f32x8 const w1Step8 = f32x8_splat(dw1Dx * 8.0f);
+	f32x8 const w2Step8 = f32x8_splat(dw2Dx * 8.0f);
+
+	for (auto y = i32{bbox.min.y}; y <= bbox.max.y; ++y) {
+		// SIMD coverage
+		f32x8 w0 = f32x8_splat(w0Row) + w0LaneInit;
+		f32x8 w1 = f32x8_splat(w1Row) + w1LaneInit;
+		f32x8 w2 = f32x8_splat(w2Row) + w2LaneInit;
+
+		// -- SIMD attributes
+		f32v4x8 laneColor = color.simdRow(laneOffsetsX);
+		f32x8 laneDepth = depth.simdRow(laneOffsetsX);
+		f32x8 laneInvW = invW.simdRow(laneOffsetsX);
+
+		bool anyPixelWritten = false;
+
+		for (i32 x = bbox.min.x & ~7; x <= bbox.max.x; x += 8) {
+			f32x8 const pixX = f32x8_splat((f32)x + 0.5f) + laneOffsetsX;
+			f32x8 const zero = f32x8_zero();
+			u32x8 const inside = (w0 >= zero) & (w1 >= zero) & (w2 >= zero);
+			u32x8 const inBounds = (pixX < f32x8_splat((f32)targetDim.x));
+			u32x8 const mask = inside & inBounds;
+
+			// -- write to tile if any lanes are covered
+			if (!u32x8_any(mask)) {
+				if (anyPixelWritten) {
+					break;
 				}
+			}
+			else {
 				anyPixelWritten = true;
+				f32x8 const wPersp = f32x8_splat(1.0f) / laneInvW;
+				f32v4x8 const interpColor = laneColor * wPersp;
+				f32x8 const interpDepth = laneDepth * wPersp;
 
-				// -- barycentric interpolation of attributes
-				f32x8 const b0 = w0 * f32x8_splat(rcpArea);
-				f32x8 const b1 = w1 * f32x8_splat(rcpArea);
-				f32x8 const b2 = w2 * f32x8_splat(rcpArea);
-
-				// -- linear depth interpolation
-				f32x8 const interpDepth = (
-					(
-						  b0 * f32x8_splat(d0)
-						+ b1 * f32x8_splat(d1)
-						+ b2 * f32x8_splat(d2)
-					)
-				);
-
-				// -- perspective-correct attributes
-				f32x8 const interpInvW = (
-					  b0 * f32x8_splat(perspectiveW[0])
-					+ b1 * f32x8_splat(perspectiveW[1])
-					+ b2 * f32x8_splat(perspectiveW[2])
-				);
-				f32x8 const w = f32x8_splat(1.0f) / interpInvW;
-				f32v4x8 const interpColor = (
-					(
-						  (v0AttrColor * b0)
-						+ (v1AttrColor * b1)
-						+ (v2AttrColor * b2)
-					) * w
-				);
-
-				// -- depth test + write
 				alignas(32) srat::array<float, 8> lanesDepth {};
-				alignas(32) srat::array<u32, 8>   lanesMask {};
+				alignas(32) srat::array<u32, 8> lanesMask {};
 				f32x8_store(interpDepth, lanesDepth);
 				u32x8_store(mask, lanesMask);
-
 				rasterize_tile_write_pixel(
-					x, y,
-					/*interpColor=*/interpColor,
-					/*lanesDepth=*/lanesDepth,
-					/*lanesMask=*/lanesMask,
-					/*targetColor=*/imageColor,
-					/*targetDepth=*/imageDepth
+					x, y, interpColor, lanesDepth, lanesMask,
+					imageColor, imageDepth
 				);
-				scanline_step();
 			}
+
+			// -- increment lanes
+			w0 = w0 + w0Step8;
+			w1 = w1 + w1Step8;
+			w2 = w2 + w2Step8;
+			laneColor = laneColor + color.ddxStep8;
+			laneDepth = laneDepth + depth.ddxStep8;
+			laneInvW = laneInvW + invW.ddxStep8;
 		}
+
+		// increment row
+		w0Row += dw0Dy;
+		w1Row += dw1Dy;
+		w2Row += dw2Dy;
+		color.stepRow();
+		depth.stepRow();
+		invW.stepRow();
+	}
 }
 
 void srat::rasterizer_phase_rasterization(
@@ -217,12 +270,12 @@ void srat::rasterizer_phase_rasterization(
 ) {
 	// for each tile ...
 	Let tileCount = srat::tile_grid_tile_count(ci.tileGrid);
-	for (Mut tileX = 0u; tileX < tileCount.x; ++ tileX)
-	for (Mut tileY = 0u; tileY < tileCount.y; ++ tileY) {
+	for (auto tileX = 0u; tileX < tileCount.x; ++ tileX)
+	for (auto tileY = 0u; tileY < tileCount.y; ++ tileY) {
 		// for each tri ...
 		u32v2 const tile = {tileX, tileY};
 		Let bin = srat::tile_grid_bin(ci.tileGrid, tile);
-	 	for (Mut triIdx = 0u; triIdx < bin.triangleIndices.size(); ++triIdx) {
+	 	for (auto triIdx = 0u; triIdx < bin.triangleIndices.size(); ++triIdx) {
 			rasterize_triangle(
 				ci.tileGrid,
 				bin,
