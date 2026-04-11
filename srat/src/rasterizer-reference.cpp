@@ -19,10 +19,6 @@ void srat::rasterizer_reference_render(
 	auto depthData = srat::gfx::image_data16(targetDepth);
 	u32v2 const dim = viewport.dim;
 
-	// Clear buffers
-	std::fill_n(colorData.ptr(), colorData.size(), 0xFF000000u);  // black
-	std::fill_n(depthData.ptr(), depthData.size(), UINT16_MAX);
-
 	for (auto const& tri : triangles)
 	{
 		f32v2 const v0 = as_f32v2(tri.screenPos[0]);
@@ -37,13 +33,13 @@ void srat::rasterizer_reference_render(
 
 		if (minX > maxX || minY > maxY) continue;
 
-		f32 const area = f32v2_triangle_area(v0, v1, v2);
+		f32 const area = f32v2_triangle_parallelogram_area(v0, v1, v2);
 		if (area <= 0.0001f) continue; // backface or degenerate
 
 		f32 const rcpArea = 1.0f / area;
 
 		// Top-left fill rule
-		auto isTopLeft = [](f32v2 a, f32v2 b) -> bool {
+		auto const & isTopLeft = [](f32v2 a, f32v2 b) -> bool {
 			return (a.y == b.y && a.x > b.x) || (a.y < b.y);
 		};
 
@@ -58,39 +54,43 @@ void srat::rasterizer_reference_render(
 				f32 const px = (f32)x + 0.5f;
 				f32 const py = (f32)y + 0.5f;
 
-				f32 w0 = scalarEdge(v1, v2, px, py) + bias0;
-				f32 w1 = scalarEdge(v2, v0, px, py) + bias1;
-				f32 w2 = scalarEdge(v0, v1, px, py) + bias2;
+				f32 const w0 = scalarEdge(v1, v2, px, py) + bias0;
+				f32 const w1 = scalarEdge(v2, v0, px, py) + bias1;
+				f32 const w2 = scalarEdge(v0, v1, px, py) + bias2;
 
 				if (w0 < 0.0f || w1 < 0.0f || w2 < 0.0f) continue;
 
-				f32 b0 = w0 * rcpArea;
-				f32 b1 = w1 * rcpArea;
-				f32 b2 = w2 * rcpArea;
+				f32 const b0 = w0 * rcpArea;
+				f32 const b1 = w1 * rcpArea;
+				f32 const b2 = w2 * rcpArea;
 
 				// Perspective-correct interpolation
-				f32 invW = b0 * tri.perspectiveW[0] +
-						   b1 * tri.perspectiveW[1] +
-						   b2 * tri.perspectiveW[2];
-
+				f32 const invW = (
+					b0 * tri.perspectiveW[0] +
+					b1 * tri.perspectiveW[1] +
+					b2 * tri.perspectiveW[2]
+				);
 				if (invW <= 0.0f) continue;
 
-				f32 w = 1.0f / invW;
+				f32 const w = 1.0f / invW;
 
-				f32 interpDepth = (b0 * tri.depth[0] + b1 * tri.depth[1] + b2 * tri.depth[2]);
+				f32 const interpDepth = (
+					b0 * tri.depth[0] + b1 * tri.depth[1] + b2 * tri.depth[2]
+				);
 
-				f32v4 interpColor = (
+				f32v4 const interpColor = (
 					tri.color[0] * tri.perspectiveW[0] * b0 +
 					tri.color[1] * tri.perspectiveW[1] * b1 +
 					tri.color[2] * tri.perspectiveW[2] * b2
 				) * w;
 
 				// Depth test + write
-				u16 depth16 = (u16)std::roundf(f32_clamp(interpDepth, 0.0f, 1.0f) * 65535.0f);
-
+				// SRAT_ASSERT(interpDepth >= 0.0f && interpDepth <= 1.0f);
+				u16 depth16 = (
+					(u16)std::roundf(f32_clamp(interpDepth, 0.0f, 1.0f) * 65535.0f)
+				);
 				size_t idx = (size_t)y * dim.x + (size_t)x;
-
-				if (depth16 > depthData[idx]) continue;
+				if (depth16 < depthData[idx]) { continue; }
 
 				depthData[idx] = depth16;
 				colorData[idx] = as_rgba(interpColor);

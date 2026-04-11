@@ -1,4 +1,4 @@
-#include <cstdio>
+#include "gui.hpp"
 
 #include <srat/gfx-command-buffer.hpp>
 #include <srat/gfx-image.hpp>
@@ -9,11 +9,12 @@
 #include <raylib.h>
 #include <rlImGui.h>
 
+#include <cstdio>
 #include <cstdint>
 #include <numbers>
 
-
-static constexpr i32v2 kWindowDim = { 512, 512 };
+static constexpr i32v2 kWindowDim = { 1920, 1080 };
+static constexpr i32v2 kTargetDim = { 512, 512 };
 static bool animationEnabled = true;
 
 void unit_tests(i32 const argc, char const * const * argv);
@@ -21,7 +22,7 @@ void unit_tests(i32 const argc, char const * const * argv);
 void raylib_init()
 {
 	SetTraceLogLevel(LOG_NONE);
-	InitWindow(1024, 720, "srat");
+	InitWindow(kWindowDim.x, kWindowDim.y, "srat");
 	SetTargetFPS(0);
 	rlImGuiSetup(true);
 	ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -184,8 +185,8 @@ SratModel loadModel(char const * objPath) {
 	return model;
 }
 
-// just a placeholder function
-void draw_scene(
+// this draws the scene a single time as a unit-test for debugging
+void draw_scene_unit_tests(
 	srat::gfx::Device const & device,
 	SratModel const & model,
 	f32 const deltaTime,
@@ -195,7 +196,7 @@ void draw_scene(
 {
 	// -- clear image
 	srat::slice<u8> imagePtr = srat::gfx::image_data8(target);
-	for (u64 i = 0; i < (u64)kWindowDim.x * (u64)kWindowDim.y; ++i) {
+	for (u64 i = 0; i < (u64)kTargetDim.x * (u64)kTargetDim.y; ++i) {
 		imagePtr[i*4 + 0] = 0; // r
 		imagePtr[i*4 + 1] = 0; // g
 		imagePtr[i*4 + 2] = 0; // b
@@ -204,10 +205,9 @@ void draw_scene(
 
 	// -- clear depth
 	Let depthPtr = srat::slice<u16> {srat::gfx::image_data16(depthTarget)};
-	for (u64 i = 0; i < (u64)kWindowDim.x * (u64)kWindowDim.y; ++i) {
-		depthPtr[i] = UINT16_MAX; // max depth
+	for (u64 i = 0; i < (u64)kTargetDim.x * (u64)kTargetDim.y; ++i) {
+		depthPtr[i] = 0; // max depth
 	}
-
 
 	// -- build modelviewproj
 	// f32 const time = animationEnabled ? fmodf(deltaTime, 1000.f) : 0.f;
@@ -225,7 +225,67 @@ void draw_scene(
 		cmdBuf,
 		srat::gfx::Viewport {
 			.offset = { 0, 0 },
-			.dim = { kWindowDim.x, kWindowDim.y },
+			.dim = { kTargetDim.x, kTargetDim.y },
+		},
+		target,
+		depthTarget
+	);
+
+	for (auto & mesh : model.meshes) {
+		srat::gfx::DrawInfo const & drawInfo = mesh.drawInfo;
+		srat::gfx::command_buffer_draw(cmdBuf, srat::gfx::DrawInfo {
+			.modelViewProjection = modelViewProj,
+			.vertexAttributes = drawInfo.vertexAttributes,
+			.indices = drawInfo.indices,
+			.indexCount = drawInfo.indexCount,
+		});
+	}
+
+	srat::gfx::command_buffer_submit(device, cmdBuf);
+	srat::gfx::command_buffer_destroy(cmdBuf);
+}
+
+// just a placeholder function
+void draw_scene(
+	srat::gfx::Device const & device,
+	SratModel const & model,
+	f32 const deltaTime,
+	srat::gfx::Image const & target,
+	srat::gfx::Image const & depthTarget
+)
+{
+	// -- clear image
+	srat::slice<u8> imagePtr = srat::gfx::image_data8(target);
+	for (u64 i = 0; i < (u64)kTargetDim.x * (u64)kTargetDim.y; ++i) {
+		imagePtr[i*4 + 0] = 0; // r
+		imagePtr[i*4 + 1] = 0; // g
+		imagePtr[i*4 + 2] = 0; // b
+		imagePtr[i*4 + 3] = 255; // a
+	}
+
+	// -- clear depth
+	Let depthPtr = srat::slice<u16> {srat::gfx::image_data16(depthTarget)};
+	for (u64 i = 0; i < (u64)kTargetDim.x * (u64)kTargetDim.y; ++i) {
+		depthPtr[i] = UINT16_MAX; // max depth
+	}
+
+	// -- build modelviewproj
+	// f32 const time = animationEnabled ? fmodf(deltaTime, 1000.f) : 0.f;
+	f32m44 const proj = f32m44_perspective(
+		90.f * (std::numbers::pi_v<float> / 180.f), /*aspect=*/ 1.0f, 0.1f, 500.0f
+	);
+	f32v3 const center = model.center();
+	f32v3 const size = model.size();
+	// rotate around the center of the model, and move back so it's visible
+	f32m44 const view = compute_orbit_view(model, deltaTime);
+	f32m44 const modelViewProj = proj * view;
+	// -- record command buffer
+	srat::gfx::CommandBuffer cmdBuf = srat::gfx::command_buffer_create();
+	srat::gfx::command_buffer_bind_framebuffer(
+		cmdBuf,
+		srat::gfx::Viewport {
+			.offset = { 0, 0 },
+			.dim = { kTargetDim.x, kTargetDim.y },
 		},
 		target,
 		depthTarget
@@ -247,18 +307,37 @@ void draw_scene(
 
 // -----------------------------------------------------------------------------
 
+void depth_image_to_grayscale_texture(
+	srat::gfx::Image const & depthImage,
+	Image const & outTexture
+) {
+	Let depthData = srat::gfx::image_data16(depthImage);
+	std::vector<u8> grayscaleData(depthData.size() * 4);
+	for (size_t i = 0; i < depthData.size(); ++i) {
+		// Map depth to [0, 255], where closer is brighter
+		u8 const depthValue = (u8)((f32(depthData[i]) / (f32)UINT16_MAX) * 255);
+		grayscaleData[i*4 + 0] = depthValue;
+		grayscaleData[i*4 + 1] = depthValue;
+		grayscaleData[i*4 + 2] = depthValue;
+		grayscaleData[i*4 + 3] = 255;
+	}
+	memcpy(outTexture.data, grayscaleData.data(), grayscaleData.size());
+}
+
+// -----------------------------------------------------------------------------
+
 i32 main(i32 const argc, char const * const * argv)
 {
 	unit_tests(argc, argv);
 
 	raylib_init();
 
-	Image const img = GenImageColor(kWindowDim.x, kWindowDim.y, BLACK);
-	Texture2D tex = LoadTextureFromImage(img);
+	Image const defaultImgRl = GenImageColor(kTargetDim.x, kTargetDim.y, BLACK);
+	Texture2D const deviceTexOut = LoadTextureFromImage(defaultImgRl);
 
 	srat::gfx::Image const imageColor = (
 		srat::gfx::image_create(srat::gfx::ImageCreateInfo {
-			.dim = { kWindowDim.x, kWindowDim.y },
+			.dim = { kTargetDim.x, kTargetDim.y },
 			.layout = srat::gfx::ImageLayout::Linear,
 			.format = srat::gfx::ImageFormat::r8g8b8a8_unorm,
 		})
@@ -266,16 +345,99 @@ i32 main(i32 const argc, char const * const * argv)
 
 	srat::gfx::Image const sratImageDepth = (
 		srat::gfx::image_create(srat::gfx::ImageCreateInfo {
-			.dim = { kWindowDim.x, kWindowDim.y },
+			.dim = { kTargetDim.x, kTargetDim.y },
 			.layout = srat::gfx::ImageLayout::Linear,
 			.format = srat::gfx::ImageFormat::depth16_unorm,
 		})
 	);
 
-	srat::gfx::Device const device = srat::gfx::device_create({
+	srat::gfx::Device const deviceReference = srat::gfx::device_create({
 		.referenceMode = true,
 	});
+	srat::gfx::Device const device = srat::gfx::device_create({
+		.referenceMode = false,
+	});
 	SratModel model = loadModel("assets/suzanne.obj");
+
+	// -- generate two unit test images with reference and normal device
+	auto const imgUnitTestImageReference = (
+		GenImageColor(kTargetDim.x, kTargetDim.y, BLACK)
+	);
+	auto const imgUnitTestImageReferenceDepth = (
+		GenImageColor(kTargetDim.x, kTargetDim.y, BLACK)
+	);
+	auto const imgUnitTestImageDevice = (
+		GenImageColor(kTargetDim.x, kTargetDim.y, BLACK)
+	);
+	auto const imgUnitTestImageDeviceDepth = (
+		GenImageColor(kTargetDim.x, kTargetDim.y, BLACK)
+	);
+	{
+		srat::gfx::Image const unitTestImageReference = (
+			srat::gfx::image_create(srat::gfx::ImageCreateInfo {
+				.dim = { kTargetDim.x, kTargetDim.y },
+				.layout = srat::gfx::ImageLayout::Linear,
+				.format = srat::gfx::ImageFormat::r8g8b8a8_unorm,
+			})
+		);
+		srat::gfx::Image const unitTestImageReferenceDepth = (
+			srat::gfx::image_create(srat::gfx::ImageCreateInfo {
+				.dim = { kTargetDim.x, kTargetDim.y },
+				.layout = srat::gfx::ImageLayout::Linear,
+				.format = srat::gfx::ImageFormat::depth16_unorm,
+			})
+		);
+		srat::gfx::Image const unitTestImageDevice = (
+			srat::gfx::image_create(srat::gfx::ImageCreateInfo {
+				.dim = { kTargetDim.x, kTargetDim.y },
+				.layout = srat::gfx::ImageLayout::Linear,
+				.format = srat::gfx::ImageFormat::r8g8b8a8_unorm,
+			})
+		);
+		srat::gfx::Image const unitTestImageDeviceDepth = (
+			srat::gfx::image_create(srat::gfx::ImageCreateInfo {
+				.dim = { kTargetDim.x, kTargetDim.y },
+				.layout = srat::gfx::ImageLayout::Linear,
+				.format = srat::gfx::ImageFormat::depth16_unorm,
+			})
+		);
+		draw_scene_unit_tests(
+			deviceReference,
+			model,
+			12.f,
+			unitTestImageReference,
+			unitTestImageReferenceDepth
+		);
+		draw_scene_unit_tests(
+			device,
+			model,
+			12.f,
+			unitTestImageDevice,
+			unitTestImageDeviceDepth
+		);
+		memcpy(
+			imgUnitTestImageReference.data,
+			srat::gfx::image_data8(unitTestImageReference).ptr(),
+			(size_t)kTargetDim.x * (size_t)kTargetDim.y * 4
+		);
+		depth_image_to_grayscale_texture(
+			unitTestImageReferenceDepth,
+			imgUnitTestImageReferenceDepth
+		);
+		memcpy(
+			imgUnitTestImageDevice.data,
+			srat::gfx::image_data8(unitTestImageDevice).ptr(),
+			(size_t)kTargetDim.x * (size_t)kTargetDim.y * 4
+		);
+		depth_image_to_grayscale_texture(
+			unitTestImageDeviceDepth,
+			imgUnitTestImageDeviceDepth
+		);
+		srat::gfx::image_destroy(unitTestImageReference);
+		srat::gfx::image_destroy(unitTestImageReferenceDepth);
+		srat::gfx::image_destroy(unitTestImageDevice);
+		srat::gfx::image_destroy(unitTestImageDeviceDepth);
+	}
 
 	while (!WindowShouldClose())
 	{
@@ -283,11 +445,10 @@ i32 main(i32 const argc, char const * const * argv)
 		ClearBackground(RAYWHITE);
 
 		// -- here is the srat hookup
-		// just draw triangle from 0,0->kWindowDim,0->256,kWindowDim
 		draw_scene(device, model, (f32)GetTime(), imageColor, sratImageDepth);
 
 		// lastly copy srat data into raylib texture
-		UpdateTexture(tex, srat::gfx::image_data8(imageColor).ptr());
+		UpdateTexture(deviceTexOut, srat::gfx::image_data8(imageColor).ptr());
 
 		static srat::array<float, 16> timings {};
 		static float timeSinceLastUpdate = 0.f;
@@ -356,8 +517,18 @@ i32 main(i32 const argc, char const * const * argv)
 		// viewport
 		{
 			ImGui::Begin("viewport");
-			rlImGuiImage(&tex);
+			rlImGuiImage(&deviceTexOut);
 			ImGui::End();
+		}
+
+		{
+			// convert srat images to raylib images
+			guiUnitTestImages(
+				imgUnitTestImageReference,
+				imgUnitTestImageReferenceDepth,
+				imgUnitTestImageDevice,
+				imgUnitTestImageDeviceDepth
+			);
 		}
 
 		// runtime settings
@@ -420,13 +591,18 @@ i32 main(i32 const argc, char const * const * argv)
 	}
 
 	srat::gfx::device_destroy(device);
+	srat::gfx::device_destroy(deviceReference);
 	srat::gfx::image_destroy(imageColor);
 	srat::gfx::image_destroy(sratImageDepth);
 	SRAT_CLEAN_EXIT();
 
 	// raylib destroy
-	UnloadImage(img);
-	UnloadTexture(tex);
+	UnloadImage(defaultImgRl);
+	UnloadImage(imgUnitTestImageReference);
+	UnloadImage(imgUnitTestImageReferenceDepth);
+	UnloadImage(imgUnitTestImageDevice);
+	UnloadImage(imgUnitTestImageDeviceDepth);
+	UnloadTexture(deviceTexOut);
 	rlImGuiShutdown();
 	raylib_shutdown();
 	return 0;

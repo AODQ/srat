@@ -15,6 +15,7 @@ using i32 = int32_t;
 using i16 = int16_t;
 using i8 = int8_t;
 using f32 = float;
+using f64 = double;
 using usize = std::size_t;
 
 static constexpr auto skEpsilon = 0.0001f;
@@ -41,6 +42,14 @@ inline T alignUp(T value, T alignment)
 
 } // srat
 
+// -----------------------------------------------------------------------------
+// color
+
+struct ColorRgba8 {
+	u8 r, g, b, a;
+};
+
+// -----------------------------------------------------------------------------
 // logging utility
 
 #include <srat/core-config.hpp>

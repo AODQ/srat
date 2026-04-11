@@ -16,7 +16,7 @@ namespace {
 	};
 
 	static srat::HandlePool<srat::gfx::Device, ImplDevice> sDevicePool = (
-		srat::HandlePool<srat::gfx::Device, ImplDevice>::create(1, "DevicePool")
+		srat::HandlePool<srat::gfx::Device, ImplDevice>::create(8, "DevicePool")
 	);
 }
 

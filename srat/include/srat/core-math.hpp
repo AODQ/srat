@@ -746,12 +746,12 @@ inline f32x8 f32x8_barycentric(
 	return f32x8_fmadd(dbx, dpy, -(dby * dpx));
 }
 
-inline f32 f32v2_triangle_area(
+inline f32 f32v2_triangle_parallelogram_area(
 	f32v2 const & v0,
 	f32v2 const & v1,
 	f32v2 const & v2
 ) {
-	return 0.5f * fabsf(
+	return fabsf(
 		(v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x)
 	);
 }

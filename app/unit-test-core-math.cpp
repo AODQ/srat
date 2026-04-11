@@ -678,7 +678,7 @@ TEST_CASE("f32m44 perspective far plane maps to w=zFar") {
 
 TEST_CASE("f32v2_triangle_area CCW positive") {
 	// CCW triangle: (0,0),(1,0),(0,1) — area = 0.5, signed = +
-	f32 area = f32v2_triangle_area(
+	f32 area = f32v2_triangle_parallelogram_area(
 		f32v2{0.f,0.f}, f32v2{1.f,0.f}, f32v2{0.f,1.f}
 	);
 	CHECK(area == doctest::Approx(1.f).epsilon(0.001f)); // 2x area
@@ -686,14 +686,14 @@ TEST_CASE("f32v2_triangle_area CCW positive") {
 
 TEST_CASE("f32v2_triangle_area CW negative") {
 	// CW winding should give negative
-	f32 area = f32v2_triangle_area(
+	f32 area = f32v2_triangle_parallelogram_area(
 		f32v2{0.f,0.f}, f32v2{0.f,1.f}, f32v2{1.f,0.f}
 	);
 	CHECK(area == doctest::Approx(-1.f).epsilon(0.001f));
 }
 
 TEST_CASE("f32v2_triangle_area degenerate") {
-	f32 area = f32v2_triangle_area(
+	f32 area = f32v2_triangle_parallelogram_area(
 		f32v2{0.f,0.f}, f32v2{1.f,0.f}, f32v2{2.f,0.f}
 	);
 	CHECK(area == doctest::Approx(0.f).epsilon(0.001f));

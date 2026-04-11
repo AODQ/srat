@@ -199,6 +199,7 @@ target_sources(
 	app/unit-test-rasterizer.cpp
 	app/unit-test-rasterizer-tile-grid.cpp
 	app/unit-tests.cpp
+	app/gui.cpp
 )
 target_include_directories(
 	app

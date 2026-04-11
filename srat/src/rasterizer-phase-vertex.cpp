@@ -45,7 +45,9 @@ void srat::rasterizer_phase_vertex(
 		Let c2 = f32v4{params.draw.modelViewProjection * f32v4(p2, 1.0f)};
 
 		// reject triangle if it's degenerate
-		if (c0.w <= skEpsilon) { continue; }
+		if (c0.w <= skEpsilon || c1.w <= skEpsilon || c2.w <= skEpsilon) {
+			continue;
+		}
 
 		// TODO reject triangle if it doesn't fit on screen
 
@@ -59,7 +61,7 @@ void srat::rasterizer_phase_vertex(
 			Let viewportDim = params.viewport.dim;
 			return i32v2 {
 				i32(T_roundf<i32>((ndc.x + 1.0f) * 0.5f * (f32)viewportDim.x)),
-				i32(T_roundf<i32>((ndc.y + 1.0f) * (f32)viewportDim.y)),
+				i32(T_roundf<i32>((ndc.y + 1.0f) * 0.5f * (f32)viewportDim.y)),
 			};
 		};
 		Let screen0 = i32v2 { ndcToScreen(ndc0) };
@@ -68,7 +70,7 @@ void srat::rasterizer_phase_vertex(
 
 		// -- skip back-facing triangles
 		Let area = f32 {
-			f32v2_triangle_area(
+			f32v2_triangle_parallelogram_area(
 				as_f32v2(screen0), as_f32v2(screen1), as_f32v2(screen2)
 			)
 		};
@@ -79,9 +81,10 @@ void srat::rasterizer_phase_vertex(
 		params.outPositions[outAttrIdx + 0] = screen0;
 		params.outPositions[outAttrIdx + 1] = screen1;
 		params.outPositions[outAttrIdx + 2] = screen2;
-		params.outDepth[outAttrIdx + 0] = (ndc0.z + 1.0f) * 0.5f;
-		params.outDepth[outAttrIdx + 1] = (ndc1.z + 1.0f) * 0.5f;
-		params.outDepth[outAttrIdx + 2] = (ndc2.z + 1.0f) * 0.5f;
+		// vulkan/reverse projection convention: NDC z is 0 and 1 far
+		params.outDepth[outAttrIdx + 0] = ndc0.z;
+		params.outDepth[outAttrIdx + 1] = ndc1.z;
+		params.outDepth[outAttrIdx + 2] = ndc2.z;
 		params.outPerspectiveW[outAttrIdx + 0] = 1.0f / c0.w;
 		params.outPerspectiveW[outAttrIdx + 1] = 1.0f / c1.w;
 		params.outPerspectiveW[outAttrIdx + 2] = 1.0f / c2.w;
