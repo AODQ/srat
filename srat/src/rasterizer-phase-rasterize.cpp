@@ -10,42 +10,56 @@ static inline void rasterize_tile_write_pixel(
 	i32 const x,
 	i32 const y,
 	f32v4x8 const & interpColor,
-	srat::array<float, 8> const & lanesDepth,
-	srat::array<u32, 8> const & lanesMask,
+	f32x8 const & interpDepth,
+	u32x8 const & mask,
 	srat::gfx::Image const & targetColor,
 	srat::gfx::Image const & targetDepth
 ) {
 	Let targetDim = u32v2{srat::gfx::image_dim(targetColor)};
 	Let imageData = srat::gfx::image_data32(targetColor);
-	Let rowPixels = imageData.subslice((y*targetDim.x) + x, 8);
+	auto rowPixels = imageData.subslice((y*targetDim.x) + x, 8);
 	Let depthData = srat::gfx::image_data16(targetDepth);
-	Let rowDepths = depthData.subslice((y*targetDim.x) + x, 8);
-	// sequential write
-	for (auto lane = 0; lane < 8; ++lane) {
-		if (!lanesMask[lane]) { continue; }
-		i32 const pixelX = x + lane;
-		if (pixelX < 0 || pixelX >= (i32)targetDim.x) { continue; }
-		// -- depth test
-		u16 depth16 = (u16)(
-			std::roundl(f32_clamp(lanesDepth[lane], 0.f, 1.f) * (f32)UINT16_MAX)
-		);
-		if (depth16 < rowDepths[lane]) {
-			continue;
-		}
+	auto rowDepths = depthData.subslice((y*targetDim.x) + x, 8);
 
-		// -- write depth
-		rowDepths[lane] = depth16;
+	// -- scale depth to u16 and convert
+	f32x8 const depthClamped = f32x8_max(f32x8_zero(), f32x8_min(interpDepth, f32x8_splat(1.0f)));
+	__m256i const newDepthI32 = _mm256_cvtps_epi32((depthClamped * f32x8_splat((f32)UINT16_MAX)).v);
+	__m128i const newDepth16 = _mm_packus_epi32(
+		_mm256_castsi256_si128(newDepthI32),
+		_mm256_extracti128_si256(newDepthI32, 1)
+	);
 
-		// -- write color
-		rowPixels[lane] = (
-			as_rgba(f32v4(
-				interpColor.x.lane(lane),
-				interpColor.y.lane(lane),
-				interpColor.z.lane(lane),
-				interpColor.w.lane(lane)
-			))
-		);
-	}
+	// -- depth test: new >= old  →  invert (old > new) via XOR with all-ones
+	__m128i const oldDepth16 = _mm_loadu_si128((__m128i const*)rowDepths.ptr());
+	__m256i const oldDepthI32 = _mm256_cvtepu16_epi32(oldDepth16);
+	u32x8 const depthPass = { _mm256_xor_si256(
+		_mm256_cmpgt_epi32(oldDepthI32, newDepthI32),
+		_mm256_set1_epi32(-1)
+	)};
+	u32x8 const finalMask = mask & depthPass;
+
+	// -- write depth: load-blend-store (no u16 masked-store in AVX2)
+	__m128i const mask16 = _mm_packs_epi32(
+		_mm256_castsi256_si128(finalMask.v),
+		_mm256_extracti128_si256(finalMask.v, 1)
+	);
+	_mm_storeu_si128(
+		(__m128i*)rowDepths.ptr(),
+		_mm_blendv_epi8(oldDepth16, newDepth16, mask16)
+	);
+
+	// -- pack color channels: as_rgba layout = R byte0, G byte1, B byte2, A byte3
+	auto const scale255 = [](f32x8 const & ch) -> __m256i {
+		f32x8 const c = f32x8_max(f32x8_zero(), f32x8_min(ch, f32x8_splat(1.0f)));
+		return _mm256_cvtps_epi32((c * f32x8_splat(255.0f) + f32x8_splat(0.5f)).v);
+	};
+	__m256i const packed = _mm256_or_si256(
+		_mm256_or_si256(scale255(interpColor.x), _mm256_slli_epi32(scale255(interpColor.y), 8)),
+		_mm256_or_si256(_mm256_slli_epi32(scale255(interpColor.z), 16), _mm256_slli_epi32(scale255(interpColor.w), 24))
+	);
+
+	// -- masked color store: only writes lanes where bit 31 of finalMask is set
+	_mm256_maskstore_epi32(reinterpret_cast<int*>(rowPixels.ptr()), finalMask.v, packed);
 }
 
 namespace {
@@ -242,12 +256,8 @@ static void rasterize_triangle(
 				f32v4x8 const interpColor = laneColor * wPersp;
 				f32x8 const interpDepth = laneDepth;
 
-				alignas(32) srat::array<float, 8> lanesDepth {};
-				alignas(32) srat::array<u32, 8> lanesMask {};
-				f32x8_store(interpDepth, lanesDepth);
-				u32x8_store(mask, lanesMask);
 				rasterize_tile_write_pixel(
-					x, y, interpColor, lanesDepth, lanesMask,
+					x, y, interpColor, interpDepth, mask,
 					ci.imageColor, ci.imageDepth
 				);
 			}
