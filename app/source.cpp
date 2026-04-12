@@ -197,7 +197,7 @@ void draw_scene_unit_tests(
 	// -- clear image
 	srat::slice<u8> imagePtr = srat::gfx::image_data8(target);
 	for (u64 i = 0; i < (u64)kTargetDim.x * (u64)kTargetDim.y; ++i) {
-		imagePtr[i*4 + 0] = 0; // r
+		imagePtr[i*4 + 0] = 128; // r
 		imagePtr[i*4 + 1] = 0; // g
 		imagePtr[i*4 + 2] = 0; // b
 		imagePtr[i*4 + 3] = 255; // a
@@ -266,7 +266,7 @@ void draw_scene(
 	// -- clear depth
 	Let depthPtr = srat::slice<u16> {srat::gfx::image_data16(depthTarget)};
 	for (u64 i = 0; i < (u64)kTargetDim.x * (u64)kTargetDim.y; ++i) {
-		depthPtr[i] = UINT16_MAX; // max depth
+		depthPtr[i] = 0; // max depth
 	}
 
 	// -- build modelviewproj

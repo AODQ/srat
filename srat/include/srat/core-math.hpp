@@ -731,6 +731,18 @@ inline f32bbox2 f32bbox2_from_triangle(
 // -- rasterizer specific math
 // -----------------------------------------------------------------------------
 
+[[nodiscard]] inline f32 topLeftRuleBias(
+	i32v2 const & a,
+	i32v2 const & b
+) {
+	// top edge is horizontal and goes left,
+	// left edge is non-horizontal and runs downwards
+	if ((a.y == b.y && a.x > b.x) || a.y < b.y) {
+		return 0.0f;
+	}
+	return -0.5f;
+}
+
 // computes triangle edge function
 // (bx-ax)*(py-ay) - (by-ay)*(px-ax)
 inline f32x8 f32x8_barycentric(

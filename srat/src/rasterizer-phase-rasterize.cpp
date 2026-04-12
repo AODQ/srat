@@ -128,13 +128,9 @@ static void rasterize_triangle(
 	f32 const w2Start = scalarEdge(v0f, v1f, evalX, evalY);
 
 	// top-left fill rule biases
-	Let isTopLeft = [](f32v2 const & a, f32v2 const & b) -> bool {
-		f32v2 const e = b - a;
-		return (e.y == 0.0f && e.x > 0.0f) || (e.y < 0.0f);
-	};
-	f32 const bias0 = isTopLeft(v1f, v2f) ? 0.0f : -0.5f;
-	f32 const bias1 = isTopLeft(v2f, v0f) ? 0.0f : -0.5f;
-	f32 const bias2 = isTopLeft(v0f, v1f) ? 0.0f : -0.5f;
+	f32 const bias0 = topLeftRuleBias(sp1, sp2);
+	f32 const bias1 = topLeftRuleBias(sp2, sp0);
+	f32 const bias2 = topLeftRuleBias(sp0, sp1);
 
 	// -- coverage interpolants
 	f32 w0Row = w0Start + bias0;
@@ -234,7 +230,7 @@ static void rasterize_triangle(
 				anyPixelWritten = true;
 				f32x8 const wPersp = f32x8_splat(1.0f) / laneInvW;
 				f32v4x8 const interpColor = laneColor * wPersp;
-				f32x8 const interpDepth = laneDepth * wPersp;
+				f32x8 const interpDepth = laneDepth;
 
 				alignas(32) srat::array<float, 8> lanesDepth {};
 				alignas(32) srat::array<u32, 8> lanesMask {};
