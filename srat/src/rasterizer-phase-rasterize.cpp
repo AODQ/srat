@@ -17,9 +17,9 @@ static inline void rasterize_tile_write_pixel(
 ) {
 	Let targetDim = u32v2{srat::gfx::image_dim(targetColor)};
 	Let imageData = srat::gfx::image_data32(targetColor);
-	auto rowPixels = imageData.subslice((y*targetDim.x) + x, 8);
+	Let rowPixels = imageData.subslice((y*targetDim.x) + x, 8);
 	Let depthData = srat::gfx::image_data16(targetDepth);
-	auto rowDepths = depthData.subslice((y*targetDim.x) + x, 8);
+	Let rowDepths = depthData.subslice((y*targetDim.x) + x, 8);
 
 	// -- scale depth to u16 and convert
 	f32x8 const depthClamped = f32x8_max(f32x8_zero(), f32x8_min(interpDepth, f32x8_splat(1.0f)));
@@ -44,7 +44,7 @@ static inline void rasterize_tile_write_pixel(
 		_mm256_extracti128_si256(finalMask.v, 1)
 	);
 	_mm_storeu_si128(
-		(__m128i*)rowDepths.ptr(),
+		(__m128i*)const_cast<u16*>(rowDepths.ptr()),
 		_mm_blendv_epi8(oldDepth16, newDepth16, mask16)
 	);
 
@@ -59,7 +59,7 @@ static inline void rasterize_tile_write_pixel(
 	);
 
 	// -- masked color store: only writes lanes where bit 31 of finalMask is set
-	_mm256_maskstore_epi32(reinterpret_cast<int*>(rowPixels.ptr()), finalMask.v, packed);
+	_mm256_maskstore_epi32(reinterpret_cast<int*>(const_cast<u32*>(rowPixels.ptr())), finalMask.v, packed);
 }
 
 namespace {
