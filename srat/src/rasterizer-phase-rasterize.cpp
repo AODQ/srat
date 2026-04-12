@@ -4,6 +4,8 @@
 #include <srat/rasterizer-interpolant.hpp>
 #include <srat/rasterizer-tile-grid.hpp>
 
+#include <tbb/parallel_for.h>
+
 static inline void rasterize_tile_write_pixel(
 	i32 const x,
 	i32 const y,
@@ -46,17 +48,25 @@ static inline void rasterize_tile_write_pixel(
 	}
 }
 
+namespace {
+	struct RasterizeTriangleParams {
+		srat::TileGrid const & tileGrid;
+		srat::TileBin const & tileBin;
+		u32v2 tile;
+		u32 triIdx;
+		srat::gfx::Image imageColor;
+		srat::gfx::Image imageDepth;
+	};
+}
+
 static void rasterize_triangle(
-	srat::TileGrid const & tileGrid,
-	srat::TileBin const & tileBin,
-	u32v2 const tile,
-	u32 const triIdx,
-	srat::gfx::Image const imageColor,
-	srat::gfx::Image const imageDepth
+	RasterizeTriangleParams const & ci
 ) {
-	u32v2 const targetDim = srat::gfx::image_dim(imageColor);
+	u32v2 const targetDim = srat::gfx::image_dim(ci.imageColor);
 	Let tri = (
-		srat::tile_grid_triangle_data(tileGrid, tileBin.triangleIndices[triIdx])
+		srat::tile_grid_triangle_data(
+			ci.tileGrid, ci.tileBin.triangleIndices[ci.triIdx]
+		)
 	);
 	i32v2 const sp0 = tri.screenPos[0];
 	i32v2 const sp1 = tri.screenPos[1];
@@ -84,12 +94,12 @@ static void rasterize_triangle(
 	i32bbox2 const bboxTri = i32bbox2_from_triangle(sp0, sp1, sp2);
 	i32bbox2 const bboxImg = {
 		.min = {
-			(i32)tile.x * (i32)srat_tile_size(),
-			(i32)tile.y * (i32)srat_tile_size(),
+			(i32)ci.tile.x * (i32)srat_tile_size(),
+			(i32)ci.tile.y * (i32)srat_tile_size(),
 		},
 		.max = {
-			(i32)(tile.x+1) * (i32)srat_tile_size() - 1,
-			(i32)(tile.y+1) * (i32)srat_tile_size() - 1
+			(i32)(ci.tile.x+1) * (i32)srat_tile_size() - 1,
+			(i32)(ci.tile.y+1) * (i32)srat_tile_size() - 1
 		},
 	};
 	i32bbox2 const bbox = {
@@ -238,7 +248,7 @@ static void rasterize_triangle(
 				u32x8_store(mask, lanesMask);
 				rasterize_tile_write_pixel(
 					x, y, interpColor, lanesDepth, lanesMask,
-					imageColor, imageDepth
+					ci.imageColor, ci.imageDepth
 				);
 			}
 
@@ -264,22 +274,31 @@ static void rasterize_triangle(
 void srat::rasterizer_phase_rasterization(
 	srat::RasterizerPhaseRasterizationParams const & ci
 ) {
-	// for each tile ...
-	Let tileCount = srat::tile_grid_tile_count(ci.tileGrid);
-	for (auto tileX = 0u; tileX < tileCount.x; ++ tileX)
-	for (auto tileY = 0u; tileY < tileCount.y; ++ tileY) {
-		// for each tri ...
-		u32v2 const tile = {tileX, tileY};
-		Let bin = srat::tile_grid_bin(ci.tileGrid, tile);
-	 	for (auto triIdx = 0u; triIdx < bin.triangleIndices.size(); ++triIdx) {
-			rasterize_triangle(
-				ci.tileGrid,
-				bin,
-				tile,
-				triIdx,
-				ci.targetColor,
-				ci.targetDepth
-			);
+	u32v2 const tileCount = srat::tile_grid_tile_count(ci.tileGrid);
+	u32 const numTiles = tileCount.x * tileCount.y;
+
+	auto const & applyTile = (
+		[&](tbb::blocked_range<u32> const & range) {
+			for (u32 tileId = range.begin(); tileId < range.end(); ++tileId) {
+				u32v2 const tile = { tileId % tileCount.x, tileId / tileCount.x };
+				srat::TileBin const & bin = srat::tile_grid_bin(ci.tileGrid, tile);
+				for (auto tri = 0u; tri < bin.triangleIndices.size(); ++tri) {
+					rasterize_triangle({
+						.tileGrid = ci.tileGrid,
+						.tileBin = bin,
+						.tile = tile,
+						.triIdx = tri,
+						.imageColor = ci.targetColor,
+						.imageDepth = ci.targetDepth
+					});
+				}
+			}
 		}
+	);
+
+	if (srat_rasterize_parallel()) {
+		tbb::parallel_for(tbb::blocked_range<u32>(0, numTiles), applyTile);
+	} else {
+		applyTile(tbb::blocked_range<u32>(0, numTiles));
 	}
 }

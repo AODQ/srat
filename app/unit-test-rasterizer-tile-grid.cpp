@@ -7,7 +7,7 @@
 // -- helpers
 // -----------------------------------------------------------------------------
 
-static constexpr u32 kTileSize = SRAT_TILE_SIZE();
+static constexpr u32 kTileSize = 64;
 static constexpr u32 kImageW   = kTileSize * 4; // 4x4 tiles
 static constexpr u32 kImageH   = kTileSize * 4;
 

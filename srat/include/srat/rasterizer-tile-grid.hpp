@@ -48,14 +48,7 @@ namespace srat {
 	void tile_grid_bin_triangle_bbox(
 		TileGrid & grid,
 		TileTriangleData const & triangleData
-#if SRAT_BINNING_TWO_PHASES()
-		, bool secondPhase = false
-#endif
 	);
-
-#if SRAT_BINNING_TWO_PHASES()
-	void tile_grid_bin_finalize_allocations(TileGrid & grid);
-#endif
 
 	TileBin & tile_grid_bin(TileGrid const & grid, u32v2 const & tile);
 

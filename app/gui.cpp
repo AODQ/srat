@@ -9,6 +9,8 @@
 #include <cmath>
 #include <cstdio>
 
+// ai generated for image viewer tool
+
 // ─────────────────────────────────────────────────────────
 // Enums
 // ─────────────────────────────────────────────────────────
@@ -44,6 +46,16 @@ struct GuiState {
 	Texture2D gpuDevDepth;
 	Texture2D gpuDiffColor;
 	Texture2D gpuDiffDepth;
+
+	// Histogram-filtered GPU textures
+	Texture2D gpuHistRefColor;
+	Texture2D gpuHistRefDepth;
+	Texture2D gpuHistDevColor;
+	Texture2D gpuHistDevDepth;
+	bool  showHistogram;
+	f32   histMin;
+	f32   histMax;
+
 
 	DiffStats colorStats;
 	DiffStats depthStats;
@@ -141,6 +153,96 @@ static void buildDiffTex(
 
 	UnloadImage(tmp);
 }
+
+// Compute per-pixel luminance (0–1) from an RGBA8 image.
+static inline f32 pixelLuminance(u8 const * p) {
+	return (0.299f * (f32)p[0] + 0.587f * (f32)p[1] + 0.114f * (f32)p[2])
+		/ 255.0f;
+}
+
+// Build a brightness-remapped texture: pixels with luminance
+// outside [lo, hi] go black; pixels inside get rescaled so
+// the visible slice fills the full 0–255 range.
+static void buildHistTex(
+	Image const & src,
+	f32 lo, f32 hi,
+	Texture2D & tex
+) {
+	i32 const n   = src.width * src.height;
+	Image     tmp = GenImageColor(src.width, src.height, BLACK);
+	u8 *       out = (u8 *)tmp.data;
+	u8 const * sp  = (u8 const *)src.data;
+	f32 const range = (hi - lo) > 1e-6f ? (hi - lo) : 1e-6f;
+
+	for (i32 i = 0; i < n; i++) {
+		i32 const b = i * 4;
+		f32 const L = pixelLuminance(sp + b);
+		if (L < lo || L > hi) {
+			out[b+0] = 0; out[b+1] = 0; out[b+2] = 0; out[b+3] = 255;
+		} else {
+			f32 const t = (L - lo) / range;
+			for (i32 c = 0; c < 3; c++) {
+				f32 const v = (f32)sp[b+c] * t;
+				out[b+c] = (u8)(v > 255.f ? 255 : (v + 0.5f));
+			}
+			out[b+3] = 255;
+		}
+	}
+
+	if (tex.id == 0)
+		tex = LoadTextureFromImage(tmp);
+	else
+		UpdateTexture(tex, tmp.data);
+
+	UnloadImage(tmp);
+}
+
+// Draw a 256-bin luminance histogram with the selected range
+// highlighted, using the window DrawList.
+static void drawHistogram(
+	Image const & img,
+	f32 lo, f32 hi,
+	f32 width, f32 height
+) {
+	// this doesn't work
+	// // Accumulate bins
+	// u32 bins[256] = {};
+	// u8 const * p = (u8 const *)img.data;
+	// i32 const  n = img.width * img.height;
+	// u32 maxBin = 1;
+	// for (i32 i = 0; i < n; i++) {
+	// 	u8 const L = (u8)(pixelLuminance(p + i*4) * 255.0f + 0.5f);
+	// 	bins[L]++;
+	// }
+	// for (i32 i = 0; i < 256; i++)
+	// 	if (bins[i] > maxBin) maxBin = bins[i];
+
+	// // Draw via DrawList
+	// ImVec2 const cursor = ImGui::GetCursorScreenPos();
+	// ImDrawList * dl = ImGui::GetWindowDrawList();
+	// f32 const barW = width / 256.0f;
+
+	// i32 const loB = (i32)(lo * 255.0f + 0.5f);
+	// i32 const hiB = (i32)(hi * 255.0f + 0.5f);
+
+	// for (i32 i = 0; i < 256; i++) {
+	// 	f32 const h = ((f32)bins[i] / (f32)maxBin) * height;
+	// 	f32 const x = cursor.x + (f32)i * barW;
+	// 	bool const inRange = (i >= loB && i <= hiB);
+	// 	ImU32 const col = inRange
+	// 		? IM_COL32(100, 180, 255, 220)
+	// 		: IM_COL32(60, 60, 70, 160);
+	// 	dl->AddRectFilled(
+	// 		ImVec2(x, cursor.y + height - h),
+	// 		ImVec2(x + barW, cursor.y + height),
+	// 		col
+	// 	);
+	// }
+
+	// // Reserve the space in ImGui layout
+	// ImGui::Dummy(ImVec2(width, height));
+}
+
 
 // Draw a Texture2D into a DrawList rect with zoom/pan and
 // scissor clipping. All panels share identical zoom/pan so
@@ -383,6 +485,7 @@ static void drawStatsBar(
 		"[1/2/3] View   [C/D] Channel   "
 		"[Scroll/+/-] Zoom   [RMB/MMB] Pan   "
 		"[R] Reset   [A] Amp   [I] Inspector"
+		"[H] Histogram"
 	);
 }
 
@@ -413,6 +516,10 @@ void guiUnitTestImages(
 			UnloadTexture(s.gpuDevDepth);
 			UnloadTexture(s.gpuDiffColor);
 			UnloadTexture(s.gpuDiffDepth);
+			if (s.gpuHistRefColor.id) { UnloadTexture(s.gpuHistRefColor); }
+			if (s.gpuHistRefDepth.id) { UnloadTexture(s.gpuHistRefDepth); }
+			if (s.gpuHistDevColor.id) { UnloadTexture(s.gpuHistDevColor); }
+			if (s.gpuHistDevDepth.id) { UnloadTexture(s.gpuHistDevDepth); }
 		}
 
 		// Upload reference + device to GPU for display
@@ -446,7 +553,15 @@ void guiUnitTestImages(
 			s.draggingSlider = false;
 			s.diffAmplify    = 8.0f;
 			s.showInspector  = true;
+			s.showHistogram  = false;
+			s.histMin  = 0.0f;
+			s.histMax  = 1.0f;
 		}
+
+		s.gpuHistRefColor = {};
+		s.gpuHistRefDepth = {};
+		s.gpuHistDevColor = {};
+		s.gpuHistDevDepth = {};
 
 		s.lastDataPtr = referenceColor.data;
 		s.initialized = true;
@@ -479,6 +594,8 @@ void guiUnitTestImages(
 		if (ImGui::IsKeyPressed(ImGuiKey_D)) s.channel = 1;
 		if (ImGui::IsKeyPressed(ImGuiKey_I))
 			s.showInspector = !s.showInspector;
+		if (ImGui::IsKeyPressed(ImGuiKey_H))
+			s.showHistogram = !s.showHistogram;
 		if (ImGui::IsKeyPressed(ImGuiKey_R)) {
 			s.zoom = 1.0f;
 			s.panX = 0.0f;
@@ -538,6 +655,20 @@ void guiUnitTestImages(
 		? s.colorStats : s.depthStats;
 	char const * chName = isColor ? "Color" : "Depth";
 
+	// When histogram is active, swap ref/dev textures
+	// for the filtered versions
+	Texture2D const & dispRefTex = (
+		s.showHistogram && (isColor ? s.gpuHistRefColor.id : s.gpuHistRefDepth.id)
+		? (isColor ? s.gpuHistRefColor : s.gpuHistRefDepth)
+		: refTex
+	);
+	Texture2D const & dispDevTex = (
+		s.showHistogram && (isColor ? s.gpuHistDevColor.id : s.gpuHistDevDepth.id)
+		? (isColor ? s.gpuHistDevColor : s.gpuHistDevDepth)
+		: devTex
+	);
+
+
 	// ── Toolbar ──────────────────────────────────────────
 	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.f);
 
@@ -554,6 +685,23 @@ void guiUnitTestImages(
 		if (active) ImGui::PopStyleColor();
 		ImGui::SameLine();
 	};
+
+	// Histogram toggle
+	{
+		bool const on = s.showHistogram;
+		if (on) {
+			ImGui::PushStyleColor(
+				ImGuiCol_Button,
+				ImVec4(0.22f, 0.47f, 0.85f, 1.f)
+			);
+		}
+		if (ImGui::Button("Histogram")) {
+			s.showHistogram = !s.showHistogram;
+		}
+		if (on) ImGui::PopStyleColor();
+		ImGui::SameLine();
+	}
+
 
 	viewButton("Side-by-Side", ViewMode::SideBySide);
 	viewButton("Slider",       ViewMode::Slider);
@@ -623,6 +771,43 @@ void guiUnitTestImages(
 
 	ImGui::PopStyleVar();
 
+	// ── Histogram panel (when active) ─────────────────────
+	if (s.showHistogram) {
+		f32 const prevMin = s.histMin;
+		f32 const prevMax = s.histMax;
+
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.f);
+		ImGui::Separator();
+		ImGui::Text("Brightness Range");
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(300.f);
+		ImGui::DragFloatRange2(
+			"##histRange",
+			&s.histMin, &s.histMax,
+			0.002f, 0.0f, 1.0f,
+			"Min: %.3f", "Max: %.3f"
+		);
+		if (s.histMin > s.histMax) s.histMin = s.histMax;
+
+		// Draw the histogram
+		f32 const histW = ImGui::GetContentRegionAvail().x;
+		drawHistogram(refImg, s.histMin, s.histMax, histW, 60.f);
+		ImGui::PopStyleVar();
+
+		// Rebuild filtered textures when range changes
+		bool const rangeChanged = (
+			s.histMin != prevMin || s.histMax != prevMax
+			|| (!isColor ? !s.gpuHistRefDepth.id : !s.gpuHistRefColor.id)
+		);
+		if (rangeChanged) {
+			buildHistTex(refImg, s.histMin, s.histMax,
+				isColor ? s.gpuHistRefColor : s.gpuHistRefDepth);
+			buildHistTex(devImg, s.histMin, s.histMax,
+				isColor ? s.gpuHistDevColor : s.gpuHistDevDepth);
+		}
+	}
+
+
 	// ── Image area sizing ─────────────────────────────────
 	// Reserve space for stats bar at the bottom.
 	static constexpr f32 kStatsH = 96.f;
@@ -685,9 +870,9 @@ void guiUnitTestImages(
 
 		// Textures
 		drawTexInRect(dl, r0Min, r0Max,
-			refTex, s.zoom, s.panX, s.panY);
+			dispRefTex, s.zoom, s.panX, s.panY);
 		drawTexInRect(dl, r1Min, r1Max,
-			devTex, s.zoom, s.panX, s.panY);
+			dispDevTex, s.zoom, s.panX, s.panY);
 		drawTexInRect(dl, r2Min, r2Max,
 			difTex, s.zoom, s.panX, s.panY);
 
@@ -722,22 +907,22 @@ void guiUnitTestImages(
 
 		// Reference fills the full panel
 		drawTexInRect(dl, sMin, sMax,
-			refTex, s.zoom, s.panX, s.panY);
+			dispRefTex, s.zoom, s.panX, s.panY);
 
 		// Device clipped to the right of the divider
 		f32 const divX = sMin.x + (sMax.x - sMin.x) * s.sliderT;
 		{
 			f32 const pw = sMax.x - sMin.x;
 			f32 const ph = sMax.y - sMin.y;
-			f32 const tw = (f32)devTex.width  * s.zoom;
-			f32 const th = (f32)devTex.height * s.zoom;
+			f32 const tw = (f32)dispDevTex.width  * s.zoom;
+			f32 const th = (f32)dispDevTex.height * s.zoom;
 			f32 const ix = sMin.x + (pw - tw) * 0.5f + s.panX;
 			f32 const iy = sMin.y + (ph - th) * 0.5f + s.panY;
 			dl->PushClipRect(
 				ImVec2(divX, sMin.y), sMax, true
 			);
 			dl->AddImage(
-				(ImTextureID)(uintptr_t)devTex.id,
+				(ImTextureID)(uintptr_t)dispDevTex.id,
 				ImVec2(ix, iy),
 				ImVec2(ix + tw, iy + th)
 			);

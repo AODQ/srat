@@ -77,7 +77,7 @@ void srat::rasterizer_phase_vertex(
 		if (area <= skEpsilon) { continue; }
 
 		// -- store parameters
-		Let outAttrIdx = params.outAttrsWritten;
+		Let outAttrIdx = params.attrOffset + triIt * 3u;
 		params.outPositions[outAttrIdx + 0] = screen0;
 		params.outPositions[outAttrIdx + 1] = screen1;
 		params.outPositions[outAttrIdx + 2] = screen2;
@@ -91,6 +91,5 @@ void srat::rasterizer_phase_vertex(
 		params.outColors[outAttrIdx + 0] = attr_fetch<f32v4>(va.color, i0);
 		params.outColors[outAttrIdx + 1] = attr_fetch<f32v4>(va.color, i1);
 		params.outColors[outAttrIdx + 2] = attr_fetch<f32v4>(va.color, i2);
-		params.outAttrsWritten += 3;
 	}
 }

@@ -175,7 +175,7 @@ target_link_options(
 target_link_libraries(
 	srat
 	PUBLIC
-	#TracyClient
+	TracyClient
 	PRIVATE
 	TBB::tbb
 )

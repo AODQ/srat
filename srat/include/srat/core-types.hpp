@@ -54,16 +54,17 @@ struct ColorRgba8 {
 
 #include <srat/core-config.hpp>
 
-#if SRAT_DEBUG()
 #include <cstdio>
 #include <cstdlib>
-#define SRAT_ASSERT(expr) { \
+#define SRAT_ASSERT_ALWAYS(expr) { \
 	if (!(expr)) { \
 		fprintf(stderr, "Assertion failed: %s\nFile: %s\nLine: %d\n", \
 			#expr, __FILE__, __LINE__); \
 		std::abort(); \
 	} \
 }
+#if SRAT_DEBUG()
+#define SRAT_ASSERT(expr) SRAT_ASSERT_ALWAYS(expr)
 #else
 #define SRAT_ASSERT(expr)
 #endif

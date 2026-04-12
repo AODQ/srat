@@ -71,8 +71,10 @@ void srat::rasterizer_reference_render(
 				f32 const w = 1.0f / invW;
 
 				f32 const interpDepth = (
-					b0 * tri.depth[0] + b1 * tri.depth[1] + b2 * tri.depth[2]
-				);
+					  b0 * tri.depth[0] * tri.perspectiveW[0]
+					+ b1 * tri.depth[1] * tri.perspectiveW[1]
+					+ b2 * tri.depth[2] * tri.perspectiveW[2]
+				) * w;
 
 				f32v4 const interpColor = (
 					tri.color[0] * tri.perspectiveW[0] * b0 +

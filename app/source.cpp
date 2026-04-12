@@ -357,9 +357,11 @@ i32 main(i32 const argc, char const * const * argv)
 	srat::gfx::Device const device = srat::gfx::device_create({
 		.referenceMode = false,
 	});
-	SratModel model = loadModel("assets/suzanne.obj");
+	// SratModel model = loadModel("assets/suzanne.obj");
 	// SratModel model = loadModel("assets/blade.obj");
 	// SratModel model = loadModel("assets/sphere.obj");
+	// SratModel model = loadModel("assets/bunny.obj");
+	SratModel model = loadModel("assets/dragon.obj");
 
 	// -- generate two unit test images with reference and normal device
 	auto const imgUnitTestImageReference = (
@@ -447,7 +449,7 @@ i32 main(i32 const argc, char const * const * argv)
 		ClearBackground(RAYWHITE);
 
 		// -- here is the srat hookup
-		// draw_scene(device, model, (f32)GetTime(), imageColor, sratImageDepth);
+		draw_scene(device, model, (f32)GetTime(), imageColor, sratImageDepth);
 
 		// lastly copy srat data into raylib texture
 		UpdateTexture(deviceTexOut, srat::gfx::image_data8(imageColor).ptr());
@@ -472,46 +474,6 @@ i32 main(i32 const argc, char const * const * argv)
 				timeSinceLastUpdateTime = avgTime;
 			}
 		}
-
-		// draw the tile count on each tile for debugging
-// #if SRAT_INFORMATION_PROPAGATION()
-// 		if (srat_information_propagation()) {
-// 			u32v2 const targetDim = srat::gfx::image_dim(imageColor);
-// 			u32 const tileSize = srat_tile_size();
-// 			u32v2 const tileCount = {
-// 				(u32)(targetDim.x + tileSize - 1) / tileSize,
-// 				(u32)(targetDim.y + tileSize - 1) / tileSize,
-// 			};
-// 			for (u32 y = 0; y < tileCount.y; ++y)
-// 			for (u32 x = 0; x < tileCount.x; ++x)
-// 			{
-// 				u32 const tileX = x * (u32)srat_tile_size();
-// 				u32 const tileY = y * (u32)srat_tile_size();
-// 				u64 const triCount = srat_debug_triangle_counts()[
-// 					(y * tileCount.x) + x
-// 				];
-// 				char buf4[128];
-// 				snprintf(buf4, sizeof(buf4), "%d", (i32)triCount);
-// 				DrawText(buf4, tileX + 5, tileY + 5, 10, WHITE);
-// 				DrawLine(tileX, tileY, tileX + srat_tile_size(), tileY, WHITE);
-// 				DrawLine(tileX, tileY, tileX, tileY + srat_tile_size(), WHITE);
-// 				if (x == tileCount.x - 1) {
-// 					DrawLine(
-// 						tileX + srat_tile_size(), tileY,
-// 						tileX + srat_tile_size(), tileY + srat_tile_size(),
-// 						WHITE
-// 					);
-// 				}
-// 				if (y == tileCount.y - 1) {
-// 					DrawLine(
-// 						tileX, tileY + srat_tile_size(),
-// 						tileX + srat_tile_size(), tileY + srat_tile_size(),
-// 						WHITE
-// 					);
-// 				}
-// 			}
-// 		}
-// #endif
 
 		// -- draw the UI
 		rlImGuiBegin();
@@ -547,17 +509,16 @@ i32 main(i32 const argc, char const * const * argv)
 				0,
 				nullptr,
 				0.f,
-				50.0f,
+				200.0f,
 				ImVec2(0, 80)
 			);
 
 			// animation
 			ImGui::Checkbox("animation", &animationEnabled);
 
-#if SRAT_RUNTIME_CONFIGURABLE()
 			// configure parallel
-			ImGui::Checkbox("parallel", &srat_rasterize_parallel());
-			ImGui::Checkbox("binning simd", &srat_binning_simd());
+			ImGui::Checkbox("rasterize parallel", &srat_rasterize_parallel());
+			ImGui::Checkbox("vertex parallel", &srat_vertex_parallel());
 			// configure tile size, must be at least 16 and a multiple of 8
 			static int tileSize = (int)srat_tile_size() / 8;
 			if (
@@ -572,16 +533,6 @@ i32 main(i32 const argc, char const * const * argv)
 			) {
 				srat_tile_size() = tileSize * 8;
 			}
-
-			ImGui::Checkbox(
-				"enable binning phase",
-				&srat_enable_rasterize_binning()
-			);
-			ImGui::Checkbox(
-				"enable rasterization phase",
-				&srat_enable_rasterize_rasterization()
-			);
-#endif
 			ImGui::Text("(tile size: %d)", (i32)srat_tile_size());
 			ImGui::End();
 			rlImGuiEnd();
