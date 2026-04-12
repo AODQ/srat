@@ -39,9 +39,9 @@ void srat::rasterizer_reference_render(
 		f32 const rcpArea = 1.0f / area;
 
 		// Top-left fill rule
-		f32 const bias0 = topLeftRuleBias(tri.screenPos[0], tri.screenPos[1]);
-		f32 const bias1 = topLeftRuleBias(tri.screenPos[1], tri.screenPos[2]);
-		f32 const bias2 = topLeftRuleBias(tri.screenPos[2], tri.screenPos[0]);
+		f32 const bias0 = topLeftRuleBias(tri.screenPos[1], tri.screenPos[2]);
+		f32 const bias1 = topLeftRuleBias(tri.screenPos[2], tri.screenPos[0]);
+		f32 const bias2 = topLeftRuleBias(tri.screenPos[0], tri.screenPos[1]);
 
 		for (i32 y = minY; y <= maxY; ++y)
 		{

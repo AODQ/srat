@@ -358,6 +358,8 @@ i32 main(i32 const argc, char const * const * argv)
 		.referenceMode = false,
 	});
 	SratModel model = loadModel("assets/suzanne.obj");
+	// SratModel model = loadModel("assets/blade.obj");
+	// SratModel model = loadModel("assets/sphere.obj");
 
 	// -- generate two unit test images with reference and normal device
 	auto const imgUnitTestImageReference = (
@@ -445,7 +447,7 @@ i32 main(i32 const argc, char const * const * argv)
 		ClearBackground(RAYWHITE);
 
 		// -- here is the srat hookup
-		draw_scene(device, model, (f32)GetTime(), imageColor, sratImageDepth);
+		// draw_scene(device, model, (f32)GetTime(), imageColor, sratImageDepth);
 
 		// lastly copy srat data into raylib texture
 		UpdateTexture(deviceTexOut, srat::gfx::image_data8(imageColor).ptr());

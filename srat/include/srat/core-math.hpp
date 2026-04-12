@@ -763,9 +763,7 @@ inline f32 f32v2_triangle_parallelogram_area(
 	f32v2 const & v1,
 	f32v2 const & v2
 ) {
-	return fabsf(
-		(v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x)
-	);
+	return (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x);
 }
 
 inline i32v2 f32v4_clip_to_screen(f32v4 const & v, u32v2 const & screenSize) {
