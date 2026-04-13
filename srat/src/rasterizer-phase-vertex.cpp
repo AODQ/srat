@@ -60,8 +60,8 @@ void srat::rasterizer_phase_vertex(
 		Let ndcToScreen = [&params](f32v3 const ndc) -> i32v2 {
 			Let viewportDim = params.viewport.dim;
 			return i32v2 {
-				i32(T_roundf<i32>((ndc.x + 1.0f) * 0.5f * (f32)viewportDim.x)),
-				i32(T_roundf<i32>((ndc.y + 1.0f) * 0.5f * (f32)viewportDim.y)),
+				T_roundf_positive<i32>((ndc.x + 1.0f) * 0.5f * (f32)viewportDim.x),
+				T_roundf_positive<i32>((ndc.y + 1.0f) * 0.5f * (f32)viewportDim.y),
 			};
 		};
 		Let screen0 = i32v2 { ndcToScreen(ndc0) };

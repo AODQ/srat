@@ -18,6 +18,8 @@ namespace config {
 //NOLINTBEGIN(cppcoreguidelines-macro-usage)
 
 u64 & srat_tile_size();
+bool & srat_temp_opt();
+bool & srat_sequential_writes();
 bool & srat_rasterize_parallel();
 bool & srat_vertex_parallel();
 

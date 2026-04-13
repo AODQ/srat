@@ -156,7 +156,7 @@ target_compile_options(
 	$<$<CONFIG:Release>:-O3 -Wall>
 	${snort_sanitize_flags}
 	INTERFACE -mavx2 -mfma
-	#-DTRACY_ENABLE
+	-DTRACY_ENABLE
 )
 target_compile_definitions(
 	srat

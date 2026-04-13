@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <numbers>
 
-static constexpr i32v2 kWindowDim = { 1920, 1080 };
+static constexpr i32v2 kWindowDim = { 1024, 576 };
 static constexpr i32v2 kTargetDim = { 512, 512 };
 static bool animationEnabled = true;
 
@@ -357,11 +357,16 @@ i32 main(i32 const argc, char const * const * argv)
 	srat::gfx::Device const device = srat::gfx::device_create({
 		.referenceMode = false,
 	});
-	// SratModel model = loadModel("assets/suzanne.obj");
+
+	// debug uses a cheap model
+#if SRAT_DEBUG()
+	SratModel model = loadModel("assets/suzanne.obj");
+#else
 	// SratModel model = loadModel("assets/blade.obj");
 	// SratModel model = loadModel("assets/sphere.obj");
 	// SratModel model = loadModel("assets/bunny.obj");
 	SratModel model = loadModel("assets/dragon.obj");
+#endif
 
 	// -- generate two unit test images with reference and normal device
 	auto const imgUnitTestImageReference = (
@@ -449,7 +454,7 @@ i32 main(i32 const argc, char const * const * argv)
 		ClearBackground(RAYWHITE);
 
 		// -- here is the srat hookup
-		draw_scene(device, model, (f32)GetTime(), imageColor, sratImageDepth);
+		draw_scene(device, model, 0.0f, imageColor, sratImageDepth);
 
 		// lastly copy srat data into raylib texture
 		UpdateTexture(deviceTexOut, srat::gfx::image_data8(imageColor).ptr());
@@ -515,6 +520,12 @@ i32 main(i32 const argc, char const * const * argv)
 
 			// animation
 			ImGui::Checkbox("animation", &animationEnabled);
+
+			// configure render opts
+			ImGui::Checkbox("sequential writes", &srat_sequential_writes());
+
+			// temporary options for specific optimizations
+			ImGui::Checkbox("temp opt", &srat_temp_opt());
 
 			// configure parallel
 			ImGui::Checkbox("rasterize parallel", &srat_rasterize_parallel());

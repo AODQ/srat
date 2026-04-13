@@ -85,7 +85,9 @@ void srat::rasterizer_reference_render(
 				// Depth test + write
 				// SRAT_ASSERT(interpDepth >= 0.0f && interpDepth <= 1.0f);
 				u16 depth16 = (
-					(u16)std::roundf(f32_clamp(interpDepth, 0.0f, 1.0f) * 65535.0f)
+					T_roundf_positive<u16>(
+						f32_clamp(interpDepth, 0.0f, 1.0f) * 65535.0f
+					)
 				);
 				size_t idx = (size_t)y * dim.x + (size_t)x;
 				if (depth16 < depthData[idx]) { continue; }

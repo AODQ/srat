@@ -11,9 +11,11 @@
 // -- T math
 // -----------------------------------------------------------------------------
 
+// only handles positive values correctly
 template <typename T>
-[[nodiscard]] inline T T_roundf(f32 const v) {
-	return static_cast<T>(std::roundf(v));
+[[nodiscard]] inline T T_roundf_positive(f32 const v) {
+	SRAT_ASSERT(v >= 0.0f);
+	return static_cast<T>(v + 0.5f);
 }
 
 // -----------------------------------------------------------------------------
@@ -266,6 +268,10 @@ struct f32x8 {
 		{ return { _mm256_castps_si256(_mm256_cmp_ps(v, o.v, _CMP_GE_OQ)) }; }
 };
 
+inline u32x8 u32x8_from_f32x8(f32x8 const & v) {
+	return { _mm256_cvtps_epi32(v.v) };
+}
+
 inline f32x8 f32x8_load(srat::slice<f32, 8> const & in)
 	{ return { _mm256_loadu_ps(in.ptr()) }; }
 inline f32 f32x8_lane0(f32x8 const & v) { return _mm256_cvtss_f32(v.v); }
@@ -288,6 +294,9 @@ inline f32x8 f32x8_min(f32x8 const & a, f32x8 const & b)
 	{ return { _mm256_min_ps(a.v, b.v) }; }
 inline f32x8 f32x8_max(f32x8 const & a, f32x8 const & b)
 	{ return { _mm256_max_ps(a.v, b.v) }; }
+inline f32x8 f32x8_clamp(f32x8 const & v, f32x8 const & min, f32x8 const & max) {
+	return f32x8_min(f32x8_max(v, min), max);
+}
 
 [[nodiscard]] constexpr inline f32v3 f32v3_min(
 	f32v3 const & a, f32v3 const & b
