@@ -300,6 +300,7 @@ static void rasterize_triangle(
 			else {
 				anyPixelWritten = true;
 				f32x8 const wPersp = f32x8_splat(1.0f) / laneInvW;
+				// TODO only compute interpColor when needed for covered lanes
 				f32v4x8 const interpColor = laneColor * wPersp;
 				f32x8 const interpDepth = laneDepth * wPersp;
 
