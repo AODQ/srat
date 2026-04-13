@@ -34,6 +34,7 @@ struct ProfilerSection {
     double avgMs   { 0.0 };  // rolling average over kProfilerHistoryFrames frames
     std::array<double, kProfilerHistoryFrames> history {};
     u32    histHead { 0u };
+    double runningSum { 0.0 };  // maintained incrementally to avoid O(N) re-sum
 
     // Internal: accumulator for the frame currently in progress.
     double accumMs { 0.0 };
@@ -88,8 +89,8 @@ struct ScopedTimer {
 } // namespace srat
 
 // Convenience macro: declares a ScopedTimer for the current scope.
-// The __LINE__ suffix prevents name collisions when used multiple times
-// within the same function.
+// __COUNTER__ ensures a unique variable name even when multiple invocations
+// appear on the same line (e.g. inside macros or single-line lambdas).
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define SRAT_PROFILE_SCOPE(sectionName) \
-    ::srat::ScopedTimer const _srat_prof_##__LINE__ { sectionName }
+    ::srat::ScopedTimer const _srat_prof_##__COUNTER__ { sectionName }

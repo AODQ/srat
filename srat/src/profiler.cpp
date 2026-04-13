@@ -55,15 +55,15 @@ void srat::Profiler::frame_end(double const frameTotalMs)
     auto & s = state();
 
     for (auto & sec : s.sections) {
-        sec.lastMs                     = sec.accumMs;
-        sec.history[sec.histHead]      = sec.accumMs;
-        sec.histHead                   = (sec.histHead + 1u) % kProfilerHistoryFrames;
+        sec.lastMs = sec.accumMs;
 
-        double sum = 0.0;
-        for (double const v : sec.history) {
-            sum += v;
-        }
-        sec.avgMs = sum / static_cast<double>(kProfilerHistoryFrames);
+        // Incremental update: subtract the oldest sample, add the new one.
+        sec.runningSum             -= sec.history[sec.histHead];
+        sec.runningSum             += sec.accumMs;
+        sec.history[sec.histHead]   = sec.accumMs;
+        sec.histHead                = (sec.histHead + 1u) % kProfilerHistoryFrames;
+
+        sec.avgMs = sec.runningSum / static_cast<double>(kProfilerHistoryFrames);
     }
 
     // Publish a copy so the UI thread sees a consistent, fully-updated snapshot.
