@@ -3,10 +3,11 @@
 // draw command buffer
 
 #include <srat/core-array.hpp>
-#include <srat/gfx-device.hpp>
 #include <srat/core-math.hpp>
 #include <srat/core-types.hpp>
+#include <srat/gfx-device.hpp>
 #include <srat/gfx-image.hpp>
+#include <srat/profiler.hpp>
 
 namespace srat::gfx {
 

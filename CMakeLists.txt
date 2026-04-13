@@ -114,6 +114,7 @@ target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${RLIMGUI_DIR})
 add_library(
 	srat
 	STATIC
+	srat/src/profiler.cpp
 	srat/src/alloc-virtual-range.cpp
 	srat/src/core-config.cpp
 	srat/src/gfx-command-buffer.cpp
