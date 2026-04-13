@@ -4,6 +4,7 @@
 #include <srat/gfx-image.hpp>
 #include <srat/core-types.hpp>
 #include <srat/alloc-virtual-range.hpp>
+#include <srat/profiler.hpp>
 
 #include <imgui.h>
 #include <raylib.h>
@@ -449,7 +450,9 @@ i32 main(i32 const argc, char const * const * argv)
 		ClearBackground(RAYWHITE);
 
 		// -- here is the srat hookup
+		srat::Profiler::frame_begin();
 		draw_scene(device, model, (f32)GetTime(), imageColor, sratImageDepth);
+		srat::Profiler::frame_end(GetFrameTime() * 1000.0);
 
 		// lastly copy srat data into raylib texture
 		UpdateTexture(deviceTexOut, srat::gfx::image_data8(imageColor).ptr());
@@ -535,6 +538,57 @@ i32 main(i32 const argc, char const * const * argv)
 			}
 			ImGui::Text("(tile size: %d)", (i32)srat_tile_size());
 			ImGui::End();
+
+			// -- profiler panel
+			{
+				ImGui::Begin("profiler");
+
+				double const frameTotalMs = srat::Profiler::snapshot_frame_total_ms();
+				ImGui::Text("frame: %.3f ms (%.1f fps)",
+					frameTotalMs,
+					frameTotalMs > 0.0 ? 1000.0 / frameTotalMs : 0.0
+				);
+				ImGui::Separator();
+
+				auto const & sections = srat::Profiler::snapshot();
+				if (!sections.empty()) {
+					constexpr ImGuiTableFlags kTableFlags = (
+						  ImGuiTableFlags_Borders
+						| ImGuiTableFlags_RowBg
+						| ImGuiTableFlags_SizingStretchProp
+					);
+					if (ImGui::BeginTable("profiler_table", 4, kTableFlags)) {
+						ImGui::TableSetupColumn("Section",  ImGuiTableColumnFlags_WidthStretch);
+						ImGui::TableSetupColumn("Time (ms)", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+						ImGui::TableSetupColumn("% Frame",   ImGuiTableColumnFlags_WidthFixed, 70.0f);
+						ImGui::TableSetupColumn("Avg (ms)",  ImGuiTableColumnFlags_WidthFixed, 80.0f);
+						ImGui::TableHeadersRow();
+
+						for (auto const & sec : sections) {
+							double const pct = (
+								frameTotalMs > 0.0
+									? (sec.lastMs / frameTotalMs) * 100.0
+									: 0.0
+							);
+							ImGui::TableNextRow();
+							ImGui::TableSetColumnIndex(0);
+							ImGui::TextUnformatted(sec.name.c_str());
+							ImGui::TableSetColumnIndex(1);
+							ImGui::Text("%.3f", sec.lastMs);
+							ImGui::TableSetColumnIndex(2);
+							ImGui::Text("%.1f%%", pct);
+							ImGui::TableSetColumnIndex(3);
+							ImGui::Text("%.3f", sec.avgMs);
+						}
+						ImGui::EndTable();
+					}
+				} else {
+					ImGui::TextDisabled("(no data yet)");
+				}
+
+				ImGui::End();
+			}
+
 			rlImGuiEnd();
 		}
 

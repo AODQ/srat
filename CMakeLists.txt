@@ -120,6 +120,7 @@ add_library(
 	srat/src/gfx-device.cpp
 	srat/src/gfx-image.cpp
 	srat/src/internal-gfx-device.hpp
+	srat/src/profiler.cpp
 	srat/src/rasterizer-phase-bin.cpp
 	srat/src/rasterizer-phase-rasterize.cpp
 	srat/src/rasterizer-phase-vertex.cpp

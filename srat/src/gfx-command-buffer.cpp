@@ -4,6 +4,7 @@
 
 #include <srat/core-handle.hpp>
 #include <srat/core-math.hpp>
+#include <srat/profiler.hpp>
 #include <srat/rasterizer-phase-bin.hpp>
 #include <srat/rasterizer-phase-rasterize.hpp>
 #include <srat/rasterizer-phase-vertex.hpp>
@@ -208,13 +209,16 @@ void sgfx::command_buffer_submit(
 		}
 	);
 
-	if (srat_vertex_parallel()) {
-		tbb::parallel_for(
-			tbb::blocked_range<size_t>(0, drawCommandsBatched.size()),
-			phaseVertexApply
-		);
-	} else {
-		phaseVertexApply(tbb::blocked_range<size_t>(0, drawCommandsBatched.size()));
+	{
+		SRAT_PROFILE_SCOPE("vertex");
+		if (srat_vertex_parallel()) {
+			tbb::parallel_for(
+				tbb::blocked_range<size_t>(0, drawCommandsBatched.size()),
+				phaseVertexApply
+			);
+		} else {
+			phaseVertexApply(tbb::blocked_range<size_t>(0, drawCommandsBatched.size()));
+		}
 	}
 
 	// if in reference mode then call reference rasterizer and return early
@@ -260,19 +264,25 @@ void sgfx::command_buffer_submit(
 	}
 
 	// -- bin triangle data into tile grid
-	srat::rasterizer_phase_bin(RasterizerPhaseBinParams {
-		.tileGrid = srat::gfx::device_tile_grid(device),
-		.trianglePositions = cachedAttrPosSlice,
-		.triangleDepths = cachedAttrDepthSlice,
-		.trianglePerspectiveW = cachedAttrPerspWSlice,
-		.triangleColors = cachedAttrColorSlice,
-	});
+	{
+		SRAT_PROFILE_SCOPE("bin");
+		srat::rasterizer_phase_bin(RasterizerPhaseBinParams {
+			.tileGrid = srat::gfx::device_tile_grid(device),
+			.trianglePositions = cachedAttrPosSlice,
+			.triangleDepths = cachedAttrDepthSlice,
+			.trianglePerspectiveW = cachedAttrPerspWSlice,
+			.triangleColors = cachedAttrColorSlice,
+		});
+	}
 
 	// -- rasterize binned triangles into target framebuffer
-	srat::rasterizer_phase_rasterization(RasterizerPhaseRasterizationParams {
-		.tileGrid = srat::gfx::device_tile_grid(device),
-		.viewport = impl.viewport,
-		.targetColor = impl.targetColor,
-		.targetDepth = impl.targetDepth,
-	});
+	{
+		SRAT_PROFILE_SCOPE("rasterize");
+		srat::rasterizer_phase_rasterization(RasterizerPhaseRasterizationParams {
+			.tileGrid = srat::gfx::device_tile_grid(device),
+			.viewport = impl.viewport,
+			.targetColor = impl.targetColor,
+			.targetDepth = impl.targetDepth,
+		});
+	}
 }
