@@ -1,4 +1,5 @@
 #include "gui.hpp"
+#include "perf-suite.hpp"
 
 #include <srat/alloc-virtual-range.hpp>
 #include <srat/core-types.hpp>
@@ -17,6 +18,32 @@
 static constexpr i32v2 kWindowDim = { 1024, 576 };
 static constexpr i32v2 kTargetDim = { 512, 512 };
 static bool animationEnabled = true;
+
+// -----------------------------------------------------------------------------
+// -- app mode selection
+// -----------------------------------------------------------------------------
+// only one mode runs at a time.  the first N entries mirror PerfSuiteMode,
+// the last entry is the normal scene renderer.
+
+enum struct AppMode : u32 {
+	PerfVertex  = (u32)PerfSuiteMode::Vertex,
+	PerfBinning = (u32)PerfSuiteMode::Binning,
+	PerfRaster  = (u32)PerfSuiteMode::Raster,
+	RunScene,
+	Count,
+};
+
+static constexpr char const * kAppModeLabels[] = {
+	"perf vertex",
+	"perf binning",
+	"perf raster",
+	"run scene",
+};
+static_assert(
+	sizeof(kAppModeLabels) / sizeof(kAppModeLabels[0]) == (u32)AppMode::Count
+);
+
+static AppMode sAppMode = AppMode::RunScene;
 
 void unit_tests(i32 const argc, char const * const * argv);
 
@@ -508,7 +535,21 @@ i32 main(i32 const argc, char const * const * argv)
 
 		// -- here is the srat hookup
 		srat::Profiler::frame_begin();
-		draw_scene(device, model, 0.0f, imageColor, sratImageDepth);
+
+		if (sAppMode == AppMode::RunScene) {
+			draw_scene(device, model, 0.0f, imageColor, sratImageDepth);
+		} else {
+			perf_suite_run(
+				static_cast<PerfSuiteMode>(sAppMode),
+				PerfSuiteConfig {
+					.device = device,
+					.targetColor = imageColor,
+					.targetDepth = sratImageDepth,
+					.targetDim = kTargetDim,
+				}
+			);
+		}
+
 		srat::Profiler::frame_end(GetFrameTime() * 1000.0);
 
 		// lastly copy srat data into raylib texture
@@ -559,6 +600,22 @@ i32 main(i32 const argc, char const * const * argv)
 		{
 			ImGui::DockSpaceOverViewport();
 			ImGui::Begin("settings");
+
+			// -- mode selection
+			{
+				i32 current = (i32)sAppMode;
+				if (
+					ImGui::Combo(
+						"mode",
+						&current,
+						kAppModeLabels,
+						(i32)AppMode::Count
+					)
+				) {
+					sAppMode = static_cast<AppMode>(current);
+				}
+			}
+			ImGui::Separator();
 
 			ImGui::Text("average frame time: %.2f ms", timeSinceLastUpdateTime);
 

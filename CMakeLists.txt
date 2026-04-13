@@ -190,6 +190,7 @@ target_sources(
 	app
 	PRIVATE
 	app/source.cpp
+	app/perf-suite.cpp
 	app/tinyobjloader.cpp
 	app/unit-test-alloc-arena.cpp
 	app/unit-test-alloc-virtual-range.cpp
