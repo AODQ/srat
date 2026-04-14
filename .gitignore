@@ -5,3 +5,4 @@ cmakefiles/
 install/
 reference-bins/
 assets
+logs/

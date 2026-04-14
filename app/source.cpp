@@ -528,6 +528,22 @@ i32 main(i32 const argc, char const * const * argv)
 		srat::gfx::image_destroy(unitTestImageDeviceDepth);
 	}
 
+	// -- run one-shot startup performance suite
+	{
+		std::vector<srat::gfx::DrawInfo> modelMeshDrawInfos;
+		modelMeshDrawInfos.reserve(model.meshes.size());
+		for (auto const & mesh : model.meshes) {
+			modelMeshDrawInfos.push_back(mesh.drawInfo);
+		}
+		perf_suite_run_startup(PerfSuiteStartupConfig {
+			.device      = device,
+			.targetColor = imageColor,
+			.targetDepth = sratImageDepth,
+			.targetDim   = kTargetDim,
+			.modelMeshes = &modelMeshDrawInfos,
+		});
+	}
+
 	while (!WindowShouldClose())
 	{
 		BeginDrawing();
