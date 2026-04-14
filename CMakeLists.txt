@@ -153,17 +153,17 @@ target_compile_options(
 	PRIVATE
 	-Wextra -Wpedantic -mavx2 -mfma -fno-rtti -fno-exceptions
 	$<$<CONFIG:Debug>:-O0 -g3 -ggdb>
-	$<$<CONFIG:RelWithDebInfo>:-O2 -g3 -ggdb -fno-omit-frame-pointer -Wall>
+	$<$<CONFIG:RelWithDebInfo>:-O3 -g3 -ggdb -fno-omit-frame-pointer -Wall>
 	$<$<CONFIG:Release>:-O3 -Wall>
 	${snort_sanitize_flags}
 	INTERFACE -mavx2 -mfma
-	-DTRACY_ENABLE
+	$<$<CONFIG:RelWithDebInfo>:-DTRACY_ENABLE>
 )
 target_compile_definitions(
 	srat
 	PRIVATE
 	$<$<CONFIG:Debug>:SRAT_DEBUG_IMPL=1>
-	$<$<CONFIG:RelWithDebInfo>:SRAT_DEBUG_IMPL=1>
+	$<$<CONFIG:RelWithDebInfo>:SRAT_DEBUG_IMPL=0>
 	$<$<CONFIG:Release>:SRAT_DEBUG_IMPL=0>
 )
 target_link_options(
@@ -176,7 +176,7 @@ target_link_options(
 target_link_libraries(
 	srat
 	PUBLIC
-	TracyClient
+	$<$<CONFIG:RelWithDebInfo>:TracyClient>
 	PRIVATE
 	TBB::tbb
 )
@@ -190,6 +190,7 @@ target_sources(
 	app
 	PRIVATE
 	app/source.cpp
+	app/perf-suite.cpp
 	app/tinyobjloader.cpp
 	app/unit-test-alloc-arena.cpp
 	app/unit-test-alloc-virtual-range.cpp

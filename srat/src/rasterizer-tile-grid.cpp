@@ -93,12 +93,11 @@ u32v2 srat::tile_grid_tile_count(TileGrid const & grid) {
 	return u32v2(impl->tileCountX, impl->tileCountY);
 }
 
-srat::TileTriangleData const & srat::tile_grid_triangle_data(
-	TileGrid const & grid,
-	u32 triangleIndex
-) {
+srat::slice<srat::TileTriangleData const>
+srat::tile_grid_triangle_data(TileGrid const & grid)
+{
 	Let impl = *sTileGridPool.get(grid);
-	return impl.triangles[triangleIndex];
+	return { impl.triangles.data(), impl.triangles.size(), };
 }
 
 void srat::tile_grid_clear(TileGrid const & grid) {

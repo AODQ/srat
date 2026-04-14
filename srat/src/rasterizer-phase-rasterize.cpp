@@ -12,19 +12,17 @@ static inline void rasterize_tile_write_pixel(
 	f32v4x8 const & interpColor,
 	f32x8 const & lanesDepth,
 	u32x8 const & lanesMask,
-	srat::gfx::Image const & targetColor,
-	srat::gfx::Image const & targetDepth
+	u32v2 const & targetDim,
+	srat::slice<u32> const & imageData,
+	srat::slice<u16> const & depthData,
+	srat::array<f32, 8> const & depth16Lanes,
+	srat::array<u32, 8> & maskLanes
 ) {
-	Let targetDim = u32v2{srat::gfx::image_dim(targetColor)};
-	Let imageData = srat::gfx::image_data32(targetColor);
 	Let rowPixels = imageData.subslice((y*targetDim.x) + x, 8);
-	Let depthData = srat::gfx::image_data16(targetDepth);
 	Let rowDepths = depthData.subslice((y*targetDim.x) + x, 8);
 	// sequential write
 	if (srat_sequential_writes()) {
-		alignas(32) static srat::array<f32, 8> depth16Lanes;
 		f32x8_store(lanesDepth, depth16Lanes);
-		alignas(32) static srat::array<u32, 8> maskLanes;
 		u32x8_store(lanesMask, maskLanes);
 		for (auto lane = 0; lane < 8; ++lane) {
 			if (!maskLanes[lane]) { continue; }
@@ -113,22 +111,22 @@ namespace {
 	struct RasterizeTriangleParams {
 		srat::TileGrid const & tileGrid;
 		srat::TileBin const & tileBin;
+		srat::slice<srat::TileTriangleData const> const & triangleData;
 		u32v2 tile;
 		u32 triIdx;
-		srat::gfx::Image imageColor;
-		srat::gfx::Image imageDepth;
+		u32v2 targetDim;
+		srat::slice<u32> const & imageData;
+		srat::slice<u16> const & depthData;
 	};
 }
 
 static void rasterize_triangle(
 	RasterizeTriangleParams const & ci
 ) {
-	u32v2 const targetDim = srat::gfx::image_dim(ci.imageColor);
-	Let tri = (
-		srat::tile_grid_triangle_data(
-			ci.tileGrid, ci.tileBin.triangleIndices[ci.triIdx]
-		)
-	);
+	auto & targetDim = ci.targetDim;
+	auto & imageData = ci.imageData;
+	auto & depthData = ci.depthData;
+	Let tri = ci.triangleData[ci.tileBin.triangleIndices[ci.triIdx]];
 	i32v2 const sp0 = tri.screenPos[0];
 	i32v2 const sp1 = tri.screenPos[1];
 	i32v2 const sp2 = tri.screenPos[2];
@@ -143,6 +141,10 @@ static void rasterize_triangle(
 	f32v4 const c0 = tri.color[0];
 	f32v4 const c1 = tri.color[1];
 	f32v4 const c2 = tri.color[2];
+// NOLINTBEGIN(cppcoreguidelines-pro-type-member-init)
+	alignas(32) srat::array<f32, 8> depth16Lanes;
+	alignas(32) srat::array<u32, 8> maskLanes;
+// NOLINTEND(cppcoreguidelines-pro-type-member-init)
 
 	// -- calculate triangle area
 	f32v2 const v0f = as_f32v2(sp0);
@@ -272,22 +274,53 @@ static void rasterize_triangle(
 	f32x8 const w2Step8 = f32x8_splat(dw2Dx * 8.0f);
 
 	for (auto y = i32{bbox.min.y}; y <= bbox.max.y; ++y) {
-		// SIMD coverage
-		f32x8 w0 = f32x8_splat(w0Row) + w0LaneInit;
-		f32x8 w1 = f32x8_splat(w1Row) + w1LaneInit;
-		f32x8 w2 = f32x8_splat(w2Row) + w2LaneInit;
+		// -- find earliest x-block that could have coverage
+		auto const & firstHit = [](f32 const wRow, f32 const dwDx) -> u32 {
+			if (dwDx <= 0.0f) {
+				return (wRow >= 0.0f) ? 0 : UINT32_MAX;
+			}
+			if (wRow >= 0.0f) {
+				return 0;
+			}
+			return (i32)ceilf(-wRow / dwDx);
+		};
+		u32 const firstPixelOffset = std::max({
+			firstHit(w0Row, dw0Dx),
+			firstHit(w1Row, dw1Dx),
+			firstHit(w2Row, dw2Dx),
+		});
+		if (firstPixelOffset == UINT32_MAX) {
+			// entire row is outside all edges, can skip row
+			w0Row += dw0Dy; w1Row += dw1Dy; w2Row += dw2Dy;
+			color.stepRow(); depth.stepRow(); invW.stepRow();
+			continue;
+		}
 
-		// -- SIMD attributes
-		f32v4x8 laneColor = color.simdRow(laneOffsetsX);
-		f32x8 laneDepth = depth.simdRow(laneOffsetsX);
-		f32x8 laneInvW = invW.simdRow(laneOffsetsX);
+		// -- try to skip to first pixel with coverage
+		u32 const skipBlocks = firstPixelOffset / 8u;
+
+		// -- compute barycentrics and attributes, will be incremented in X loop
+		f32x8 w0It = (
+			  f32x8_splat(w0Row) + w0LaneInit
+			+ f32x8_splat(dw0Dx * 8.0f * (f32)skipBlocks)
+		);
+		f32x8 w1It = (
+			  f32x8_splat(w1Row) + w1LaneInit
+			+ f32x8_splat(dw1Dx * 8.0f * (f32)skipBlocks)
+		);
+		f32x8 w2It = (
+			  f32x8_splat(w2Row) + w2LaneInit
+			+ f32x8_splat(dw2Dx * 8.0f * (f32)skipBlocks)
+		);
+		f32v4x8 laneColorIt = color.simdRow(laneOffsetsX);
+		f32x8 laneDepthIt = depth.simdRow(laneOffsetsX);
+		f32x8 laneInvWIt = invW.simdRow(laneOffsetsX);
 
 		bool anyPixelWritten = false;
-
 		for (i32 x = bbox.min.x & ~7; x <= bbox.max.x; x += 8) {
 			f32x8 const pixX = f32x8_splat((f32)x + 0.5f) + laneOffsetsX;
 			f32x8 const zero = f32x8_zero();
-			u32x8 const inside = (w0 >= zero) & (w1 >= zero) & (w2 >= zero);
+			u32x8 const inside = (w0It >= zero) & (w1It >= zero) & (w2It >= zero);
 			u32x8 const inBounds = (pixX < f32x8_splat((f32)targetDim.x));
 			u32x8 const mask = inside & inBounds;
 
@@ -297,35 +330,37 @@ static void rasterize_triangle(
 					break;
 				}
 			}
-			else {
+			else
+			{
 				anyPixelWritten = true;
-				f32x8 const wPersp = f32x8_splat(1.0f) / laneInvW;
+				f32x8 const wPersp = f32x8_splat(1.0f) / laneInvWIt;
 				// TODO only compute interpColor when needed for covered lanes
-				f32v4x8 const interpColor = laneColor * wPersp;
-				f32x8 const interpDepth = laneDepth * wPersp;
+				f32v4x8 const interpColor = laneColorIt * wPersp;
+				f32x8 const interpDepth = laneDepthIt * wPersp;
 
 				rasterize_tile_write_pixel(
 					x, y, interpColor, interpDepth, mask,
-					ci.imageColor, ci.imageDepth
+					/*targetDim=*/ targetDim,
+					/*imageData=*/ imageData,
+					/*depthData=*/ depthData,
+					/*depth16Lanes=*/ depth16Lanes,
+					/*maskLanes=*/ maskLanes
+
 				);
 			}
 
 			// -- increment lanes
-			w0 = w0 + w0Step8;
-			w1 = w1 + w1Step8;
-			w2 = w2 + w2Step8;
-			laneColor = laneColor + color.ddxStep8;
-			laneDepth = laneDepth + depth.ddxStep8;
-			laneInvW = laneInvW + invW.ddxStep8;
+			w0It = w0It + w0Step8;
+			w1It = w1It + w1Step8;
+			w2It = w2It + w2Step8;
+			laneColorIt = laneColorIt + color.ddxStep8;
+			laneDepthIt = laneDepthIt + depth.ddxStep8;
+			laneInvWIt = laneInvWIt + invW.ddxStep8;
 		}
 
 		// increment row
-		w0Row += dw0Dy;
-		w1Row += dw1Dy;
-		w2Row += dw2Dy;
-		color.stepRow();
-		depth.stepRow();
-		invW.stepRow();
+		w0Row += dw0Dy; w1Row += dw1Dy; w2Row += dw2Dy;
+		color.stepRow(); depth.stepRow(); invW.stepRow();
 	}
 }
 
@@ -334,6 +369,12 @@ void srat::rasterizer_phase_rasterization(
 ) {
 	u32v2 const tileCount = srat::tile_grid_tile_count(ci.tileGrid);
 	u32 const numTiles = tileCount.x * tileCount.y;
+	srat::slice<srat::TileTriangleData const> const triangleData = (
+		srat::tile_grid_triangle_data(ci.tileGrid)
+	);
+	u32v2 const targetDim = srat::gfx::image_dim(ci.targetColor);
+	srat::slice<u32> imageData = srat::gfx::image_data32(ci.targetColor);
+	srat::slice<u16> depthData = srat::gfx::image_data16(ci.targetDepth);
 
 	auto const & applyTile = (
 		[&](tbb::blocked_range<u32> const & range) {
@@ -341,13 +382,15 @@ void srat::rasterizer_phase_rasterization(
 				u32v2 const tile = { tileId % tileCount.x, tileId / tileCount.x };
 				srat::TileBin const & bin = srat::tile_grid_bin(ci.tileGrid, tile);
 				for (auto tri = 0u; tri < bin.triangleIndices.size(); ++tri) {
-					rasterize_triangle({
+					rasterize_triangle(RasterizeTriangleParams {
 						.tileGrid = ci.tileGrid,
 						.tileBin = bin,
+						.triangleData = triangleData,
 						.tile = tile,
 						.triIdx = tri,
-						.imageColor = ci.targetColor,
-						.imageDepth = ci.targetDepth
+						.targetDim = targetDim,
+						.imageData = imageData,
+						.depthData = depthData,
 					});
 				}
 			}

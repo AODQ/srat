@@ -159,7 +159,7 @@ TEST_CASE("tile grid [triangle data retrievable after bin]") {
 		triIdx = bin.triangleIndices[0];
 	}
 	// stack data is gone — grid must have its own copy
-	auto const & data = srat::tile_grid_triangle_data(grid, triIdx);
+	auto const & data = srat::tile_grid_triangle_data(grid)[triIdx];
 	CHECK(data.screenPos[0].x >= 0);
 	CHECK(data.depth[0] == doctest::Approx(0.5f));
 	CHECK(data.perspectiveW[0] == doctest::Approx(1.f));
@@ -189,7 +189,7 @@ TEST_CASE("tile grid [bin preserves triangle data]") {
 	auto & bin = srat::tile_grid_bin(grid, { 0, 0 });
 	REQUIRE(!bin.triangleIndices.empty());
 	auto const & data = (
-		srat::tile_grid_triangle_data(grid, bin.triangleIndices[0])
+		srat::tile_grid_triangle_data(grid)[bin.triangleIndices[0]]
 	);
 
 	CHECK(data.screenPos[0].x == 10); CHECK(data.screenPos[0].y == 10);
@@ -377,8 +377,8 @@ TEST_CASE("tile grid [triangle data independent per triangle]") {
 	u32 const idxA = binA.triangleIndices[0];
 	u32 const idxB = binB.triangleIndices[0];
 
-	CHECK(srat::tile_grid_triangle_data(grid, idxA).depth[0] == doctest::Approx(0.1f));
-	CHECK(srat::tile_grid_triangle_data(grid, idxB).depth[0] == doctest::Approx(0.9f));
+	CHECK(srat::tile_grid_triangle_data(grid)[idxA].depth[0] == doctest::Approx(0.1f));
+	CHECK(srat::tile_grid_triangle_data(grid)[idxB].depth[0] == doctest::Approx(0.9f));
 
 	srat::tile_grid_destroy(grid);
 }
@@ -410,7 +410,7 @@ TEST_CASE("tile grid [triangle data survives source going out of scope]") {
 		triIdx = srat::tile_grid_bin(grid, { 0, 0 }).triangleIndices[0];
 	}
 	// pos/depth/perspW/col arrays are gone — grid must own the data
-	auto const & data = srat::tile_grid_triangle_data(grid, triIdx);
+	auto const & data = srat::tile_grid_triangle_data(grid)[triIdx];
 	CHECK(data.depth[0] == doctest::Approx(expectedDepth));
 
 	srat::tile_grid_destroy(grid);

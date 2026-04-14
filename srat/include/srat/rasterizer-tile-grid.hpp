@@ -39,9 +39,9 @@ namespace srat {
 	// call once per frame before binning
 	void tile_grid_clear(TileGrid const & grid);
 
-	TileTriangleData const & tile_grid_triangle_data(
-		TileGrid const & grid,
-		u32 triangleIndex
+	srat::slice<TileTriangleData const>
+	tile_grid_triangle_data(
+		TileGrid const & grid
 	);
 
 	// assign a triangle to a tile bin

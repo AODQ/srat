@@ -10,7 +10,7 @@ u64 & srat_tile_size() {
 }
 
 bool & srat_rasterize_parallel() {
-	static bool parallel = false;
+	static bool parallel = true;
 	return parallel;
 }
 
@@ -20,11 +20,11 @@ bool & srat_temp_opt() {
 }
 
 bool & srat_sequential_writes() {
-	static bool sequential = true; // no perf difference
+	static bool sequential = false; // no perf difference
 	return sequential;
 }
 
 bool & srat_vertex_parallel() {
-	static bool parallel = false;
+	static bool parallel = true;
 	return parallel;
 }
