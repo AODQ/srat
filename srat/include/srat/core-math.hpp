@@ -53,6 +53,13 @@ struct u32v2 {
 	bool operator==(u32v2 const & s) const = default;
 };
 
+inline u32v2 u32v2_min(u32v2 const a, u32v2 const b) {
+	return {
+		u32_min(a.x, b.x),
+		u32_min(a.y, b.y),
+	};
+}
+
 // -----------------------------------------------------------------------------
 // -- i32v2
 // -----------------------------------------------------------------------------
@@ -70,6 +77,12 @@ inline i32v2 i32v2_clamp(i32v2 const v, i32v2 const min, i32v2 const max) {
 	return {
 		i32_clamp(v.x, min.x, max.x),
 		i32_clamp(v.y, min.y, max.y),
+	};
+}
+inline i32v2 i32v2_min(i32v2 const a, i32v2 const b) {
+	return {
+		i32_min(a.x, b.x),
+		i32_min(a.y, b.y),
 	};
 }
 

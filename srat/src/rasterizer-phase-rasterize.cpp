@@ -262,7 +262,7 @@ static void rasterize_triangle(
 	);
 
 	// -- precompute SIMD constants
-	alignas(32) static srat::array<f32, 8> const laneOffsets = {
+	alignas(32) constexpr srat::array<f32, 8> const laneOffsets = {
 		0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f
 	};
 	f32x8 const laneOffsetsX = f32x8_load(srat::slice<f32, 8>(laneOffsets));
@@ -272,6 +272,8 @@ static void rasterize_triangle(
 	f32x8 const w0Step8 = f32x8_splat(dw0Dx * 8.0f);
 	f32x8 const w1Step8 = f32x8_splat(dw1Dx * 8.0f);
 	f32x8 const w2Step8 = f32x8_splat(dw2Dx * 8.0f);
+
+	f32x8 const targetDimSplat = f32x8_splat((f32)targetDim.x);
 
 	for (auto y = i32{bbox.min.y}; y <= bbox.max.y; ++y) {
 		// -- find earliest x-block that could have coverage
@@ -298,30 +300,30 @@ static void rasterize_triangle(
 
 		// -- try to skip to first pixel with coverage
 		u32 const skipBlocks = firstPixelOffset / 8u;
+		i32 const xStart = (bbox.min.x & ~7) + (i32)(skipBlocks * 8);
+		f32 const skipOffset = 8.0f * (f32)skipBlocks;
+		f32x8 const laneOffsetsSkipped = laneOffsetsX + f32x8_splat(skipOffset);
 
 		// -- compute barycentrics and attributes, will be incremented in X loop
 		f32x8 w0It = (
-			  f32x8_splat(w0Row) + w0LaneInit
-			+ f32x8_splat(dw0Dx * 8.0f * (f32)skipBlocks)
+			  f32x8_splat(w0Row) + w0LaneInit + f32x8_splat(dw0Dx * skipOffset)
 		);
 		f32x8 w1It = (
-			  f32x8_splat(w1Row) + w1LaneInit
-			+ f32x8_splat(dw1Dx * 8.0f * (f32)skipBlocks)
+			  f32x8_splat(w1Row) + w1LaneInit + f32x8_splat(dw1Dx * skipOffset)
 		);
 		f32x8 w2It = (
-			  f32x8_splat(w2Row) + w2LaneInit
-			+ f32x8_splat(dw2Dx * 8.0f * (f32)skipBlocks)
+			  f32x8_splat(w2Row) + w2LaneInit + f32x8_splat(dw2Dx * skipOffset)
 		);
-		f32v4x8 laneColorIt = color.simdRow(laneOffsetsX);
-		f32x8 laneDepthIt = depth.simdRow(laneOffsetsX);
-		f32x8 laneInvWIt = invW.simdRow(laneOffsetsX);
+		f32v4x8 laneColorIt = color.simdRow(laneOffsetsSkipped);
+		f32x8 laneDepthIt = depth.simdRow(laneOffsetsSkipped);
+		f32x8 laneInvWIt = invW.simdRow(laneOffsetsSkipped);
 
 		bool anyPixelWritten = false;
-		for (i32 x = bbox.min.x & ~7; x <= bbox.max.x; x += 8) {
+		for (i32 x = xStart; x <= bbox.max.x; x += 8) {
 			f32x8 const pixX = f32x8_splat((f32)x + 0.5f) + laneOffsetsX;
 			f32x8 const zero = f32x8_zero();
 			u32x8 const inside = (w0It >= zero) & (w1It >= zero) & (w2It >= zero);
-			u32x8 const inBounds = (pixX < f32x8_splat((f32)targetDim.x));
+			u32x8 const inBounds = (pixX < targetDimSplat);
 			u32x8 const mask = inside & inBounds;
 
 			// -- write to tile if any lanes are covered
