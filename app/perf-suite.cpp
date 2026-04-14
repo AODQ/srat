@@ -771,10 +771,11 @@ void perf_suite_run(PerfSuiteMode const mode, PerfSuiteConfig const & config)
 void perf_suite_run_startup(PerfSuiteStartupConfig const & cfg)
 {
 	std::vector<PerfResult> results;
-	results.reserve(9);
+	bool const hasModel = cfg.modelMeshes && !cfg.modelMeshes->empty();
+	results.reserve(hasModel ? 9u : 6u);
 
 	// -- tests 1-3: model phases (only when model meshes are provided)
-	if (cfg.modelMeshes && !cfg.modelMeshes->empty()) {
+	if (hasModel) {
 		auto const & meshes = *cfg.modelMeshes;
 		results.push_back(test_model_vertex(cfg, meshes));
 		results.push_back(test_model_binning(cfg, meshes));
