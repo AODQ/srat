@@ -84,14 +84,14 @@ void sgfx::command_buffer_submit(
 	static std::vector<triangle_position_t> cachedAttrPos;
 	static std::vector<triangle_depth_t> cachedAttrDepth;
 	static std::vector<triangle_perspective_w_t> cachedAttrPerspW;
-	static std::vector<triangle_color_t> cachedAttrColor;
+	static std::vector<f32v2> cachedAttrUv;
 	// this wil enable parallelization of vertex processing
 	static std::vector<size_t> cachedAttrOffsetsPerDrawCommand;
 
 	cachedAttrPos.clear();
 	cachedAttrDepth.clear();
 	cachedAttrPerspW.clear();
-	cachedAttrColor.clear();
+	cachedAttrUv.clear();
 	cachedAttrOffsetsPerDrawCommand.clear();
 
 	// -- break up draw commands into smaller batches to allow parallelization
@@ -99,8 +99,13 @@ void sgfx::command_buffer_submit(
 	static std::vector<srat::gfx::DrawInfo> drawCommandsBatched;
 	drawCommandsBatched.clear();
 
+	// this is dumb as fuck below
+	srat::gfx::Image referenceTexture {};
 	for (srat::gfx::DrawInfo const & drawCommand : impl.drawCommands) {
 		Let numTriangles = drawCommand.indexCount / 3u;
+		if (referenceTexture.id == 0) {
+			referenceTexture = drawCommand.boundTexture;
+		}
 		// split it up into 32 commands if 1024 or more triangles
 		if (numTriangles < 1024) {
 			drawCommandsBatched.emplace_back(drawCommand);
@@ -116,6 +121,7 @@ void sgfx::command_buffer_submit(
 			);
 			SRAT_ASSERT(batchStart < batchEnd);
 			drawCommandsBatched.emplace_back(srat::gfx::DrawInfo {
+				.boundTexture = drawCommand.boundTexture,
 				.modelViewProjection = drawCommand.modelViewProjection,
 				.vertexAttributes = drawCommand.vertexAttributes,
 				.indices = (
@@ -138,7 +144,7 @@ void sgfx::command_buffer_submit(
 	cachedAttrPos.resize(numTriangles*3);
 	cachedAttrDepth.resize(numTriangles*3);
 	cachedAttrPerspW.resize(numTriangles*3);
-	cachedAttrColor.resize(numTriangles*3);
+	cachedAttrUv.resize(numTriangles*3);
 
 	Let cachedAttrPosSlice = srat::slice(cachedAttrPos.data(), numTriangles*3);
 	Let cachedAttrDepthSlice = (
@@ -147,8 +153,8 @@ void sgfx::command_buffer_submit(
 	Let cachedAttrPerspWSlice = (
 		srat::slice(cachedAttrPerspW.data(), numTriangles*3)
 	);
-	Let cachedAttrColorSlice = (
-		srat::slice<triangle_color_t>(cachedAttrColor.data(), numTriangles*3)
+	Let cachedAttrUvSlice = (
+		srat::slice(cachedAttrUv.data(), numTriangles*3)
 	);
 
 	// -- verify every attribute has data (for now)
@@ -157,7 +163,7 @@ void sgfx::command_buffer_submit(
 		for (srat::gfx::DrawInfo const & drawCommand : drawCommandsBatched) {
 			Let va = srat::gfx::VertexAttributes { drawCommand.vertexAttributes };
 			SRAT_ASSERT(va.position.data.size() > 0);
-			SRAT_ASSERT(va.color.data.size() > 0);
+			SRAT_ASSERT(va.uv.data.size() > 0);
 		}
 	}
 
@@ -181,7 +187,7 @@ void sgfx::command_buffer_submit(
 		Let va = srat::gfx::VertexAttributes { drawCommand.vertexAttributes };
 		for (Let i : drawCommand.indices) {
 			SRAT_ASSERT(va.position.data.size() > i * va.position.byteStride);
-			SRAT_ASSERT(va.color.data.size() > i * va.color.byteStride);
+			SRAT_ASSERT(va.uv.data.size() > i * va.uv.byteStride);
 		}
 	}
 #endif
@@ -201,7 +207,7 @@ void sgfx::command_buffer_submit(
 					.outPositions = cachedAttrPosSlice,
 					.outDepth = cachedAttrDepthSlice,
 					.outPerspectiveW = cachedAttrPerspWSlice,
-					.outColors = cachedAttrColorSlice,
+					.outUvs = cachedAttrUvSlice,
 					.attrOffset = attrOffset,
 				});
 			}
@@ -245,15 +251,16 @@ void sgfx::command_buffer_submit(
 						cachedAttrPerspWSlice[base + 1],
 						cachedAttrPerspWSlice[base + 2],
 					},
-					.color = {
-						cachedAttrColorSlice[base + 0],
-						cachedAttrColorSlice[base + 1],
-						cachedAttrColorSlice[base + 2],
+					.uv = {
+						cachedAttrUvSlice[base + 0],
+						cachedAttrUvSlice[base + 1],
+						cachedAttrUvSlice[base + 2],
 					},
 				});
 			}
 		}
 		srat::rasterizer_reference_render(
+			referenceTexture,
 			srat::slice(referenceTriangles.data(), referenceTriangles.size()),
 			impl.viewport,
 			impl.targetColor,
@@ -270,7 +277,7 @@ void sgfx::command_buffer_submit(
 			.trianglePositions = cachedAttrPosSlice,
 			.triangleDepths = cachedAttrDepthSlice,
 			.trianglePerspectiveW = cachedAttrPerspWSlice,
-			.triangleColors = cachedAttrColorSlice,
+			.triangleUvs = cachedAttrUvSlice,
 		});
 	}
 
@@ -282,6 +289,7 @@ void sgfx::command_buffer_submit(
 			.viewport = impl.viewport,
 			.targetColor = impl.targetColor,
 			.targetDepth = impl.targetDepth,
+			.boundTexture = referenceTexture,
 		});
 	}
 }

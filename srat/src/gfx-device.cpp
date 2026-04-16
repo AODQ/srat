@@ -47,7 +47,7 @@ void srat::gfx::device_prepare_draw(
 
 	// -- calculate the requested dimensions of the tile grid
 	Let tileGrid = srat::TileGrid{impl->tileGrid};
-	Let requestedTileCount = u32v2 { srat::viewport_tile_count(viewport) };
+	Let requestedTileCount = i32v2 { srat::viewport_tile_count(viewport) };
 
 	// -- create or clear the tile grid
 	Let tileGridValid = bool{srat::tile_grid_valid(tileGrid)};

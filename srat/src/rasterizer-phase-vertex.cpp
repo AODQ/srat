@@ -88,8 +88,8 @@ void srat::rasterizer_phase_vertex(
 		params.outPerspectiveW[outAttrIdx + 0] = 1.0f / c0.w;
 		params.outPerspectiveW[outAttrIdx + 1] = 1.0f / c1.w;
 		params.outPerspectiveW[outAttrIdx + 2] = 1.0f / c2.w;
-		params.outColors[outAttrIdx + 0] = attr_fetch<f32v4>(va.color, i0);
-		params.outColors[outAttrIdx + 1] = attr_fetch<f32v4>(va.color, i1);
-		params.outColors[outAttrIdx + 2] = attr_fetch<f32v4>(va.color, i2);
+		params.outUvs[outAttrIdx + 0] = attr_fetch<f32v2>(va.uv, i0);
+		params.outUvs[outAttrIdx + 1] = attr_fetch<f32v2>(va.uv, i1);
+		params.outUvs[outAttrIdx + 2] = attr_fetch<f32v2>(va.uv, i2);
 	}
 }

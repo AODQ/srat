@@ -15,6 +15,12 @@ template <> struct InterpolantRow<f32v4> {
 		return f32v4x8_splat(v.x, v.y, v.z, v.w);
 	}
 };
+template <> struct InterpolantRow<f32v2> {
+	using type = f32v2x8;
+	static constexpr type splat(f32v2 const v) {
+		return f32v2x8_splat(v.x, v.y);
+	}
+};
 
 template <typename T>
 struct Interpolant {
@@ -42,7 +48,7 @@ struct Interpolant {
 		return Row::splat(value) + Row::splat(ddx) * laneOffsetsX;
 	}
 
-	constexpr void stepRow() { value += ddy; }
+	inline constexpr void stepRow() { value += ddy; }
 };
 
 } // srat

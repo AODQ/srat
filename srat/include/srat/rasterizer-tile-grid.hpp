@@ -18,7 +18,7 @@ namespace srat {
 		srat::array<i32v2, 3> screenPos {};
 		srat::array<float, 3> depth {};
 		srat::array<float, 3> perspectiveW {};
-		srat::array<f32v4, 3> color {};
+		srat::array<f32v2, 3> uv {};
 	};
 
 	// tile bin structure
@@ -27,14 +27,14 @@ namespace srat {
 	};
 
 	struct TileGridCreateInfo {
-		u32 imageWidth {0};
-		u32 imageHeight {0};
+		i32 imageWidth {0};
+		i32 imageHeight {0};
 	};
 
 	TileGrid tile_grid_create(TileGridCreateInfo const & createInfo);
 	void tile_grid_destroy(TileGrid const & grid);
 
-	u32v2 tile_grid_tile_count(TileGrid const & grid);
+	i32v2 tile_grid_tile_count(TileGrid const & grid);
 
 	// call once per frame before binning
 	void tile_grid_clear(TileGrid const & grid);
@@ -50,7 +50,7 @@ namespace srat {
 		TileTriangleData const & triangleData
 	);
 
-	TileBin & tile_grid_bin(TileGrid const & grid, u32v2 const & tile);
+	TileBin & tile_grid_bin(TileGrid const & grid, i32v2 const & tile);
 
 	bool tile_grid_valid(TileGrid const & grid);
 
@@ -60,6 +60,6 @@ namespace srat {
 
 	// calculates the number of tiles needed to cover a viewport
 	// of the given dimensions
-	u32v2 viewport_tile_count(srat::gfx::Viewport const & viewport);
+	i32v2 viewport_tile_count(srat::gfx::Viewport const & viewport);
 
 } // namespace srat

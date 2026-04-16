@@ -24,7 +24,7 @@ TEST_CASE("arena [sanity]") {
 
 TEST_CASE("arena [single allocation]") {
 	auto arena = srat::AllocArena<u32>::create(128, "test");
-	u32 * ptr = arena.allocate(1);
+	u32 * ptr = arena.allocate(1).ptr();
 	CHECK(ptr != nullptr);
 	CHECK(!arena.empty());
 	// pointer must be within the arena's data range
@@ -34,31 +34,31 @@ TEST_CASE("arena [single allocation]") {
 
 TEST_CASE("arena [allocate full capacity]") {
 	auto arena = srat::AllocArena<u32>::create(128, "test");
-	u32 * ptr = arena.allocate(128);
+	u32 * ptr = arena.allocate(128).ptr();
 	CHECK(ptr != nullptr);
 	CHECK(!arena.empty());
 }
 
 TEST_CASE("arena [overflow returns nullptr]") {
 	auto arena = srat::AllocArena<u32>::create(128, "test");
-	u32 * a = arena.allocate(128);
+	u32 * a = arena.allocate(128).ptr();
 	CHECK(a != nullptr);
-	u32 * b = arena.allocate(1);
+	u32 * b = arena.allocate(1).ptr();
 	CHECK(b == nullptr);
 }
 
 TEST_CASE("arena [overflow from start returns nullptr]") {
 	auto arena = srat::AllocArena<u32>::create(128, "test");
-	u32 * ptr = arena.allocate(129);
+	u32 * ptr = arena.allocate(129).ptr();
 	CHECK(ptr == nullptr);
 	CHECK(arena.empty());
 }
 
 TEST_CASE("arena [sequential allocations are contiguous]") {
 	auto arena = srat::AllocArena<u32>::create(128, "test");
-	u32 * a = arena.allocate(16);
-	u32 * b = arena.allocate(16);
-	u32 * c = arena.allocate(16);
+	u32 * a = arena.allocate(16).ptr();
+	u32 * b = arena.allocate(16).ptr();
+	u32 * c = arena.allocate(16).ptr();
 	CHECK(a != nullptr);
 	CHECK(b != nullptr);
 	CHECK(c != nullptr);
@@ -77,11 +77,11 @@ TEST_CASE("arena [clear resets]") {
 
 TEST_CASE("arena [clear then reallocate]") {
 	auto arena = srat::AllocArena<u32>::create(128, "test");
-	u32 * first = arena.allocate(64);
+	u32 * first = arena.allocate(64).ptr();
 	CHECK(first != nullptr);
 	arena.clear();
 	// after clear the cursor resets — should get same pointer back
-	u32 * second = arena.allocate(64);
+	u32 * second = arena.allocate(64).ptr();
 	CHECK(second != nullptr);
 	CHECK(second == first);
 }
@@ -93,14 +93,14 @@ TEST_CASE("arena [clear then full capacity again]") {
 	}
 	arena.clear();
 	CHECK(arena.empty());
-	u32 * ptr = arena.allocate(128);
+	u32 * ptr = arena.allocate(128).ptr();
 	CHECK(ptr != nullptr);
 }
 
 TEST_CASE("arena [written data is preserved]") {
 	auto arena = srat::AllocArena<u32>::create(128, "test");
-	u32 * a = arena.allocate(4);
-	u32 * b = arena.allocate(4);
+	u32 * a = arena.allocate(4).ptr();
+	u32 * b = arena.allocate(4).ptr();
 	REQUIRE(a != nullptr);
 	REQUIRE(b != nullptr);
 	a[0] = 1; a[1] = 2; a[2] = 3; a[3] = 4;
@@ -113,8 +113,8 @@ TEST_CASE("arena [alignment default]") {
 	// default alignment is alignof(T) — u64 is 8 bytes
 	auto arena = srat::AllocArena<u64>::create(128, "test");
 	// alloc 1 element then check next alloc is still aligned
-	u64 * a = arena.allocate(1);
-	u64 * b = arena.allocate(1);
+	u64 * a = arena.allocate(1).ptr();
+	u64 * b = arena.allocate(1).ptr();
 	REQUIRE(a != nullptr);
 	REQUIRE(b != nullptr);
 	CHECK(reinterpret_cast<uintptr_t>(a) % alignof(u64) == 0);
@@ -124,9 +124,9 @@ TEST_CASE("arena [alignment default]") {
 TEST_CASE("arena [alignment explicit]") {
 	auto arena = srat::AllocArena<u8>::create(128, "test");
 	// misalign by 1, then request alignment 16
-	u8 * a = arena.allocate(1);
+	u8 * a = arena.allocate(1).ptr();
 	REQUIRE(a != nullptr);
-	u8 * b = arena.allocate(16, 16);
+	u8 * b = arena.allocate(16, 16).ptr();
 	REQUIRE(b != nullptr);
 	CHECK(reinterpret_cast<uintptr_t>(b) % 16 == 0);
 	// b must be at least 1 byte after a
@@ -138,15 +138,15 @@ TEST_CASE("arena [alignment overflow]") {
 	auto arena = srat::AllocArena<u8>::create(16, "test");
 	arena.allocate(1);
 	// aligning to 8 puts cursor at 8, then requesting 10 elements = 18 > 16
-	u8 * ptr = arena.allocate(10, 8);
+	u8 * ptr = arena.allocate(10, 8).ptr();
 	CHECK(ptr == nullptr);
 }
 
 TEST_CASE("arena [data_ptr returns base pointer]") {
 	auto arena = srat::AllocArena<u32>::create(64, "test");
-	u32 * base = arena.data_ptr().ptr();
+	u32 * const base = arena.data_ptr_raw();
 	CHECK(base != nullptr);
-	u32 * first = arena.allocate(1);
+	u32 * const first = arena.allocate(1).ptr();
 	// first allocation must be at the base pointer (no alignment padding needed)
 	CHECK(first == base);
 }
@@ -157,7 +157,7 @@ TEST_CASE("arena [data_ptr returns base pointer]") {
 
 TEST_CASE("arena [move constructor]") {
 	auto arena = srat::AllocArena<u32>::create(128, "test");
-	u32 * ptr = arena.allocate(32);
+	u32 * ptr = arena.allocate(32).ptr();
 	REQUIRE(ptr != nullptr);
 
 	auto b = std::move(arena);
@@ -173,7 +173,7 @@ TEST_CASE("arena [move constructor then allocate]") {
 
 	auto b = std::move(a);
 	// cursor must be preserved — next alloc starts at offset 32
-	u32 * ptr = b.allocate(32);
+	u32 * ptr = b.allocate(32).ptr();
 	REQUIRE(ptr != nullptr);
 	CHECK(ptr == b.data_ptr().ptr() + 32);
 }
@@ -182,7 +182,7 @@ TEST_CASE("arena [move assignment]") {
 	auto a = srat::AllocArena<u32>::create(128, "test");
 	auto b = srat::AllocArena<u32>::create(64, "test b");
 
-	u32 * ptr = a.allocate(32);
+	u32 * ptr = a.allocate(32).ptr();
 	REQUIRE(ptr != nullptr);
 
 	b = std::move(a);
@@ -200,7 +200,7 @@ TEST_CASE("arena [move assignment then clear]") {
 	b.clear();
 	CHECK(b.empty());
 
-	u32 * ptr = b.allocate(128);
+	u32 * ptr = b.allocate(128).ptr();
 	CHECK(ptr != nullptr);
 }
 
@@ -285,8 +285,8 @@ TEST_CASE("arena soa [data_ptr capacity]") {
 		auto [ints, floats] = soa.data_ptr();
 		CHECK_EQ(ints.size(), 0);
 		CHECK_EQ(floats.size(), 0);
-		CHECK(ints.ptr() != nullptr);
-		CHECK(floats.ptr() != nullptr);
+		CHECK(ints.ptr() == nullptr);
+		CHECK(floats.ptr() == nullptr);
 	}
 	{
 		[[maybe_unused]] auto [a, b] = soa.allocate(16);

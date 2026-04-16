@@ -13,6 +13,7 @@ namespace srat {
 		srat::gfx::Viewport const & viewport;
 		srat::gfx::Image const & targetColor;
 		srat::gfx::Image const & targetDepth;
+		srat::gfx::Image const & boundTexture;
 	};
 	// rasterizes triangle data populated from tile grid into the
 	// target framebuffer

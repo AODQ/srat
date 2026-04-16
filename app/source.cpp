@@ -86,22 +86,45 @@ struct SratModel {
 	[[nodiscard]] f32v3 size() const { return boundsMax - boundsMin; }
 };
 
+// -----------------------------------------------------------------------------
+// -- camera state (controlled via ImGui)
+// -----------------------------------------------------------------------------
+
+struct CameraState {
+	f32 orbitAngle   = 0.0f;   // current orbit angle (radians)
+	f32 radiusMult   = 1.2f;   // multiplier on maxDim for orbit radius
+	f32 heightOffset = 0.3f;   // fraction of maxDim added to center.y
+	f32 panX         = 0.0f;   // world-space lateral pan
+	f32 panY         = 0.0f;   // world-space vertical pan
+	f32 orbitSpeed   = 1.0f;   // animation speed multiplier
+	f32 fovDeg       = 90.0f;  // vertical field of view in degrees
+};
+
+static CameraState sCam;
+
 // ai slop camera orbit
-f32m44 compute_orbit_view(const SratModel& model, f32 time)
+f32m44 compute_orbit_view(SratModel const & model, CameraState const & cam)
 {
 	f32v3 const center = model.center();
 	f32v3 const size   = model.size();
-	f32 const maxDim = f32_max(size.x, f32_max(size.y, size.z));
-	f32 const radius = maxDim * 1.2f;
+	f32 const maxDim   = f32_max(size.x, f32_max(size.y, size.z));
+	f32 const radius   = maxDim * cam.radiusMult;
 
-	// Camera position orbiting in XZ plane, slightly above center
-	f32 const camX = center.x + radius * cosf(time);
-	f32 const camZ = center.z + radius * sinf(time);
-	f32 const camY = center.y + maxDim * 0.3f;   // look slightly from above
+	// Camera position orbiting in XZ plane
+	f32 const camX = center.x + radius * cosf(cam.orbitAngle);
+	f32 const camZ = center.z + radius * sinf(cam.orbitAngle);
+	f32 const camY = center.y + maxDim * cam.heightOffset;
 
-	auto const eye = f32v3{camX, camY, camZ};
-	f32v3 const target = center;
-	auto const up = f32v3{0.0f, 1.0f, 0.0f};
+	// Apply pan: move eye and target together along camera-right and up
+	f32v3 const rawEye    = f32v3{camX, camY, camZ};
+	f32v3 const forward   = f32v3_normalize(center - rawEye);
+	f32v3 const right     = f32v3_normalize(f32v3_cross(forward, f32v3{0.0f, 1.0f, 0.0f}));
+	f32v3 const upVec     = f32v3_cross(right, forward);
+	f32v3 const panOffset = right * cam.panX + upVec * cam.panY;
+
+	auto const eye     = rawEye + panOffset;
+	f32v3 const target = center + panOffset;
+	auto const up      = f32v3{0.0f, 1.0f, 0.0f};
 
 	return f32m44_lookat(eye, target, up);
 }
@@ -122,6 +145,16 @@ SratModel loadModel(char const * objPath) {
 	if (!reader.Warning().empty()) {
 		fprintf(stderr, "TinyObjReader: %s\n", reader.Warning().c_str());
 	}
+
+	printf("---------\n");
+	printf("model info:\n");
+	printf("  obj path: %s\n", objPath);
+	printf("  material count: %zu\n", reader.GetMaterials().size());
+	printf("  vertices: %zu\n", reader.GetAttrib().vertices.size() / 3);
+	printf("  normals: %zu\n", reader.GetAttrib().normals.size() / 3);
+	printf("  texcoords: %zu\n", reader.GetAttrib().texcoords.size() / 2);
+	printf("  texcoords ws: %zu\n", reader.GetAttrib().texcoord_ws.size() / 2);
+	printf("  shapes: %zu\n", reader.GetShapes().size());
 
 	auto & attrib = reader.GetAttrib();
 	auto & shapes = reader.GetShapes();
@@ -148,15 +181,6 @@ SratModel loadModel(char const * objPath) {
 			attrib.texcoords[2*v+1]
 		);
 	}
-	for (size_t v = 0; v < attrib.colors.size() / 3; ++v) {
-		// emplace a random color
-		model.colors.emplace_back(
-			rand() / (f32)RAND_MAX, // random red
-			rand() / (f32)RAND_MAX, // random red
-			rand() / (f32)RAND_MAX, // random red
-			1.f // alpha
-		);
-	}
 
 
 	auto vec2slice = [](auto & arr) -> srat::slice<u8 const> {
@@ -178,15 +202,12 @@ SratModel loadModel(char const * objPath) {
 		}
 
 		mesh.drawInfo = srat::gfx::DrawInfo {
+			.boundTexture = srat::gfx::Image { 0 }, // not used in shader
 			.modelViewProjection = f32m44_identity(),
 			.vertexAttributes = {
 				.position = {
 					.byteStride = sizeof(f32v3),
 					.data = modelSlice,
-				},
-				.color = {
-					.byteStride = sizeof(f32v4),
-					.data = colorSlice,
 				},
 				.normal = {
 					.byteStride = sizeof(f32v3),
@@ -217,7 +238,7 @@ SratModel loadModel(char const * objPath) {
 void draw_scene_unit_tests(
 	srat::gfx::Device const & device,
 	SratModel const & model,
-	f32 const deltaTime,
+	srat::gfx::Image const & mtrlDefTex,
 	srat::gfx::Image const & target,
 	srat::gfx::Image const & depthTarget
 )
@@ -238,14 +259,11 @@ void draw_scene_unit_tests(
 	}
 
 	// -- build modelviewproj
-	// f32 const time = animationEnabled ? fmodf(deltaTime, 1000.f) : 0.f;
 	f32m44 const proj = f32m44_perspective(
-		90.f * (std::numbers::pi_v<float> / 180.f), /*aspect=*/ 1.0f, 0.1f, 500.0f
+		sCam.fovDeg * (std::numbers::pi_v<float> / 180.f), /*aspect=*/ 1.0f, 0.1f, 500.0f
 	);
-	f32v3 const center = model.center();
-	f32v3 const size = model.size();
 	// rotate around the center of the model, and move back so it's visible
-	f32m44 const view = compute_orbit_view(model, deltaTime);
+	f32m44 const view = compute_orbit_view(model, sCam);
 	f32m44 const modelViewProj = proj * view;
 	// -- record command buffer
 	srat::gfx::CommandBuffer cmdBuf = srat::gfx::command_buffer_create();
@@ -262,6 +280,7 @@ void draw_scene_unit_tests(
 	for (auto & mesh : model.meshes) {
 		srat::gfx::DrawInfo const & drawInfo = mesh.drawInfo;
 		srat::gfx::command_buffer_draw(cmdBuf, srat::gfx::DrawInfo {
+			.boundTexture = mtrlDefTex,
 			.modelViewProjection = modelViewProj,
 			.vertexAttributes = drawInfo.vertexAttributes,
 			.indices = drawInfo.indices,
@@ -277,7 +296,7 @@ void draw_scene_unit_tests(
 void draw_scene(
 	srat::gfx::Device const & device,
 	SratModel const & model,
-	f32 const deltaTime,
+	srat::gfx::Image const & mtrlDefTex,
 	srat::gfx::Image const & target,
 	srat::gfx::Image const & depthTarget
 )
@@ -298,14 +317,14 @@ void draw_scene(
 	}
 
 	// -- build modelviewproj
-	// f32 const time = animationEnabled ? fmodf(deltaTime, 1000.f) : 0.f;
-	f32m44 const proj = f32m44_perspective(
-		90.f * (std::numbers::pi_v<float> / 180.f), /*aspect=*/ 1.0f, 0.1f, 500.0f
+	f32m44 const proj = (
+		f32m44_perspective(
+			sCam.fovDeg * (std::numbers::pi_v<float> / 180.f),
+			/*aspect=*/ 1.0f, 0.1f, 500.0f
+		)
 	);
-	f32v3 const center = model.center();
-	f32v3 const size = model.size();
 	// rotate around the center of the model, and move back so it's visible
-	f32m44 const view = compute_orbit_view(model, deltaTime);
+	f32m44 const view = compute_orbit_view(model, sCam);
 	f32m44 const modelViewProj = proj * view;
 	// -- record command buffer
 	srat::gfx::CommandBuffer cmdBuf = srat::gfx::command_buffer_create();
@@ -322,6 +341,7 @@ void draw_scene(
 	for (auto & mesh : model.meshes) {
 		srat::gfx::DrawInfo const & drawInfo = mesh.drawInfo;
 		srat::gfx::command_buffer_draw(cmdBuf, srat::gfx::DrawInfo {
+			.boundTexture = mtrlDefTex,
 			.modelViewProjection = modelViewProj,
 			.vertexAttributes = drawInfo.vertexAttributes,
 			.indices = drawInfo.indices,
@@ -415,6 +435,44 @@ i32 main(i32 const argc, char const * const * argv)
 	Image const defaultImgRl = GenImageColor(kTargetDim.x, kTargetDim.y, BLACK);
 	Texture2D const deviceTexOut = LoadTextureFromImage(defaultImgRl);
 
+	auto const mtrlDefTex = []() -> srat::gfx::Image {
+		Image const img = LoadImage("assets/default.png");
+		SRAT_ASSERT(img.data);
+		SRAT_ASSERT(img.width > 0 && img.height > 0);
+		SRAT_ASSERT(
+			img.format == PIXELFORMAT_UNCOMPRESSED_R8G8B8A8
+			|| img.format == PIXELFORMAT_UNCOMPRESSED_R8G8B8
+		);
+		std::vector<u8> rgbaData((size_t)img.width * (size_t)img.height * 4);
+		if (img.format == PIXELFORMAT_UNCOMPRESSED_R8G8B8) {
+			// convert RGB to RGBA by adding an opaque alpha channel
+			for (int y = 0; y < img.height; ++y) {
+				for (int x = 0; x < img.width; ++x) {
+					size_t srcIndex = (y * img.width + x) * 3;
+					size_t dstIndex = (y * img.width + x) * 4;
+					rgbaData[dstIndex + 0] = ((u8 *)img.data)[srcIndex + 0]; // R
+					rgbaData[dstIndex + 1] = ((u8 *)img.data)[srcIndex + 1]; // G
+					rgbaData[dstIndex + 2] = ((u8 *)img.data)[srcIndex + 2]; // B
+					rgbaData[dstIndex + 3] = 255; // A (opaque)
+				}
+			}
+		} else {
+			// already RGBA, just copy
+			memcpy(rgbaData.data(), img.data, rgbaData.size());
+		}
+		auto result = srat::gfx::image_create(srat::gfx::ImageCreateInfo {
+			.dim = { img.width, img.height },
+			.layout = srat::gfx::ImageLayout::Linear,
+			.format = srat::gfx::ImageFormat::r8g8b8a8_unorm,
+			.optInitialData = srat::slice<u8 const>(
+				rgbaData.data(),
+				rgbaData.size()
+			)
+		});
+		UnloadImage(img);
+		return result;
+	}();
+
 	srat::gfx::Image const imageColor = (
 		srat::gfx::image_create(srat::gfx::ImageCreateInfo {
 			.dim = { kTargetDim.x, kTargetDim.y },
@@ -440,12 +498,12 @@ i32 main(i32 const argc, char const * const * argv)
 
 	// debug uses a cheap model
 #if SRAT_DEBUG()
-	SratModel model = loadModel("assets/suzanne.obj");
+	SratModel model = loadModel("assets/cube.obj");
 #else
 	// SratModel model = loadModel("assets/blade.obj");
 	// SratModel model = loadModel("assets/sphere.obj");
 	// SratModel model = loadModel("assets/bunny.obj");
-	SratModel model = loadModel("assets/dragon.obj");
+	SratModel model = loadModel("assets/cube.obj");
 #endif
 
 	// -- generate two unit test images with reference and normal device
@@ -493,14 +551,14 @@ i32 main(i32 const argc, char const * const * argv)
 		draw_scene_unit_tests(
 			deviceReference,
 			model,
-			12.f,
+			mtrlDefTex,
 			unitTestImageReference,
 			unitTestImageReferenceDepth
 		);
 		draw_scene_unit_tests(
 			device,
 			model,
-			12.f,
+			mtrlDefTex,
 			unitTestImageDevice,
 			unitTestImageDeviceDepth
 		);
@@ -533,10 +591,17 @@ i32 main(i32 const argc, char const * const * argv)
 		BeginDrawing();
 		ClearBackground(RAYWHITE);
 
+		// -- advance orbit angle
+		if (animationEnabled) {
+			sCam.orbitAngle += GetFrameTime() * sCam.orbitSpeed;
+		}
+
 		// -- here is the srat hookup
 		srat::Profiler::frame_begin();
 		if (sAppMode == AppMode::RunScene) {
-			draw_scene(device, model, 0.0f, imageColor, sratImageDepth);
+			draw_scene(
+				device, model, mtrlDefTex, imageColor, sratImageDepth
+			);
 		} else {
 			perf_suite_run(
 				static_cast<PerfSuiteMode>(sAppMode),
@@ -640,6 +705,28 @@ i32 main(i32 const argc, char const * const * argv)
 			// configure parallel
 			ImGui::Checkbox("rasterize parallel", &srat_rasterize_parallel());
 			ImGui::Checkbox("vertex parallel", &srat_vertex_parallel());
+			
+			// shader mode
+			// NOLINTBEGIN(*)
+			{
+				const char * shaderModeLabels[] = {
+					"Display UV",
+					"Display Depth",
+					"Display Color",
+				};
+				int shaderModeInt = (int)srat_shader_mode();
+				if (
+					ImGui::Combo(
+						"shader mode",
+						&shaderModeInt,
+						shaderModeLabels,
+						IM_ARRAYSIZE(shaderModeLabels)
+					)
+				) {
+					srat_shader_mode() = (ShaderMode)shaderModeInt;
+				}
+			}
+			// NOLINTEND(*)
 			// configure tile size, must be at least 16 and a multiple of 8
 			static int tileSize = (int)srat_tile_size() / 8;
 			if (
@@ -655,6 +742,26 @@ i32 main(i32 const argc, char const * const * argv)
 				srat_tile_size() = tileSize * 8;
 			}
 			ImGui::Text("(tile size: %d)", (i32)srat_tile_size());
+
+			// -- camera controls
+			ImGui::Separator();
+			if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+				// Manual orbit angle scrub (most useful when animation is paused)
+				ImGui::SliderFloat(
+					"Orbit Angle", &sCam.orbitAngle,
+					0.0f, 2.0f * std::numbers::pi_v<float>, "%.2f rad"
+				);
+				ImGui::SliderFloat("Orbit Speed",   &sCam.orbitSpeed,   0.0f, 5.0f,  "%.2f");
+				ImGui::SliderFloat("Radius Mult",   &sCam.radiusMult,   0.5f, 10.0f, "%.2f");
+				ImGui::SliderFloat("Height Offset", &sCam.heightOffset, -2.0f, 2.0f, "%.2f");
+				ImGui::DragFloat("Pan X", &sCam.panX, 0.01f, -50.0f, 50.0f, "%.2f");
+				ImGui::DragFloat("Pan Y", &sCam.panY, 0.01f, -50.0f, 50.0f, "%.2f");
+				ImGui::SliderFloat("FoV (deg)", &sCam.fovDeg, 10.0f, 170.0f, "%.1f");
+				if (ImGui::Button("Reset Camera")) {
+					sCam = CameraState{};
+				}
+			}
+
 			ImGui::End();
 			gui_profiler();
 			rlImGuiEnd();
@@ -669,7 +776,6 @@ i32 main(i32 const argc, char const * const * argv)
 	srat::gfx::device_destroy(deviceReference);
 	srat::gfx::image_destroy(imageColor);
 	srat::gfx::image_destroy(sratImageDepth);
-	SRAT_CLEAN_EXIT();
 
 	// raylib destroy
 	UnloadImage(defaultImgRl);

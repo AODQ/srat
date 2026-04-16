@@ -38,7 +38,7 @@ struct PerfWorkload {
 	std::vector<srat::triangle_position_t> positions;
 	std::vector<srat::triangle_depth_t> depths;
 	std::vector<srat::triangle_perspective_w_t> perspectiveW;
-	std::vector<srat::triangle_color_t> colors;
+	std::vector<f32v2> uvs;
 	bool initialised { false };
 };
 
@@ -59,7 +59,7 @@ void ensure_workload(i32v2 const dim)
 	wl.positions.resize(vertCount);
 	wl.depths.resize(vertCount);
 	wl.perspectiveW.resize(vertCount);
-	wl.colors.resize(vertCount);
+	wl.uvs.resize(vertCount);
 
 	srand(42); // deterministic
 	auto randf = []() -> f32 {
@@ -73,7 +73,7 @@ void ensure_workload(i32v2 const dim)
 		};
 		wl.depths[i] = randf();
 		wl.perspectiveW[i] = 0.5f + randf() * 0.5f;
-		wl.colors[i] = f32v4 { randf(), randf(), randf(), 1.f };
+		wl.uvs[i] = f32v2 { randf(), randf() };
 	}
 }
 
@@ -93,11 +93,11 @@ void run_perf_vertex(PerfSuiteConfig const & config)
 
 	// -- positions and colors as raw bytes for the DrawInfo
 	static std::vector<f32v3> rawPositions;
-	static std::vector<f32v4> rawColors;
+	static std::vector<f32v2> rawUvs;
 	static std::vector<u32> rawIndices;
 	if (rawPositions.empty()) {
 		rawPositions.resize(vertCount);
-		rawColors.resize(vertCount);
+		rawUvs.resize(vertCount);
 		rawIndices.resize(vertCount);
 		srand(42);
 		auto randf = []() -> f32 {
@@ -109,7 +109,7 @@ void run_perf_vertex(PerfSuiteConfig const & config)
 				randf() * 2.f - 1.f,
 				randf() * 2.f - 1.f,
 			};
-			rawColors[i] = f32v4 { randf(), randf(), randf(), 1.f };
+			rawUvs[i] = f32v2 { randf(), randf() };
 			rawIndices[i] = i;
 		}
 	}
@@ -121,31 +121,28 @@ void run_perf_vertex(PerfSuiteConfig const & config)
 	static std::vector<srat::triangle_position_t> outPos(vertCount);
 	static std::vector<srat::triangle_depth_t> outDepth(vertCount);
 	static std::vector<srat::triangle_perspective_w_t> outPerspW(vertCount);
-	static std::vector<srat::triangle_color_t> outColor(vertCount);
+	static std::vector<f32v2> outUv(vertCount);
 
 	srat::gfx::Viewport const viewport {
 		.offset = { 0, 0 },
-		.dim = { (u32)config.targetDim.x, (u32)config.targetDim.y },
+		.dim = { config.targetDim.x, config.targetDim.y },
 	};
 
 	srat::gfx::DrawInfo const drawInfo {
+		.boundTexture = srat::gfx::Image { 0 }, // not used in shader
 		.modelViewProjection = f32m44_identity(),
 		.vertexAttributes = {
 			.position = {
 				.byteStride = sizeof(f32v3),
 				.data = vec2slice(rawPositions),
 			},
-			.color = {
-				.byteStride = sizeof(f32v4),
-				.data = vec2slice(rawColors),
-			},
 			.normal = {
 				.byteStride = 0,
 				.data = srat::slice<u8 const>(),
 			},
 			.uv = {
-				.byteStride = 0,
-				.data = srat::slice<u8 const>(),
+				.byteStride = sizeof(f32v2),
+				.data = vec2slice(rawUvs),
 			},
 		},
 		.indices = srat::slice(rawIndices.data(), rawIndices.size()),
@@ -160,7 +157,7 @@ void run_perf_vertex(PerfSuiteConfig const & config)
 			.outPositions = srat::slice(outPos.data(), vertCount),
 			.outDepth = srat::slice(outDepth.data(), vertCount),
 			.outPerspectiveW = srat::slice(outPerspW.data(), vertCount),
-			.outColors = srat::slice(outColor.data(), vertCount),
+			.outUvs = srat::slice(outUv.data(), vertCount),
 			.attrOffset = 0,
 		});
 	}
@@ -173,8 +170,8 @@ void run_perf_binning(PerfSuiteConfig const & config)
 
 	// create a fresh tile grid each frame so binning always does real work
 	srat::TileGrid tileGrid = srat::tile_grid_create(srat::TileGridCreateInfo {
-		.imageWidth = (u32)config.targetDim.x,
-		.imageHeight = (u32)config.targetDim.y,
+		.imageWidth = config.targetDim.x,
+		.imageHeight = config.targetDim.y,
 	});
 
 	{
@@ -190,8 +187,8 @@ void run_perf_binning(PerfSuiteConfig const & config)
 			.trianglePerspectiveW = srat::slice(
 				wl.perspectiveW.data(), wl.perspectiveW.size()
 			),
-			.triangleColors = srat::slice(
-				wl.colors.data(), wl.colors.size()
+			.triangleUvs = srat::slice(
+				wl.uvs.data(), wl.uvs.size()
 			),
 		});
 	}
@@ -208,8 +205,8 @@ void run_perf_raster(PerfSuiteConfig const & config)
 	static bool binningDone = false;
 	static srat::TileGrid tileGrid = (
 		srat::tile_grid_create(srat::TileGridCreateInfo {
-			.imageWidth = (u32)config.targetDim.x,
-			.imageHeight = (u32)config.targetDim.y,
+			.imageWidth = config.targetDim.x,
+			.imageHeight = config.targetDim.y,
 		})
 	);
 
@@ -226,15 +223,15 @@ void run_perf_raster(PerfSuiteConfig const & config)
 			.trianglePerspectiveW = srat::slice(
 				wl.perspectiveW.data(), wl.perspectiveW.size()
 			),
-			.triangleColors = srat::slice(
-				wl.colors.data(), wl.colors.size()
+			.triangleUvs = srat::slice(
+				wl.uvs.data(), wl.uvs.size()
 			),
 		});
 	}
 
 	srat::gfx::Viewport const viewport {
 		.offset = { 0, 0 },
-		.dim = { (u32)config.targetDim.x, (u32)config.targetDim.y },
+		.dim = { config.targetDim.x, config.targetDim.y },
 	};
 
 	{
@@ -245,6 +242,7 @@ void run_perf_raster(PerfSuiteConfig const & config)
 				.viewport = viewport,
 				.targetColor = config.targetColor,
 				.targetDepth = config.targetDepth,
+				.boundTexture = srat::gfx::Image { 0 }, // not used in shader
 			}
 		);
 	}

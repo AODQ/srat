@@ -27,11 +27,16 @@ void srat::rasterizer_phase_bin(
 				params.trianglePerspectiveW[(triIt*3) + 1],
 				params.trianglePerspectiveW[(triIt*3) + 2]
 			},
-			.color = {
-				params.triangleColors[(triIt*3) + 0],
-				params.triangleColors[(triIt*3) + 1],
-				params.triangleColors[(triIt*3) + 2]
+			.uv = {
+				params.triangleUvs[(triIt*3) + 0],
+				params.triangleUvs[(triIt*3) + 1],
+				params.triangleUvs[(triIt*3) + 2]
 			},
+			// .color = {
+			// 	params.triangleColors[(triIt*3) + 0],
+			// 	params.triangleColors[(triIt*3) + 1],
+			// 	params.triangleColors[(triIt*3) + 2]
+			// },
 		};
 		srat::tile_grid_bin_triangle_bbox(params.tileGrid, triData);
 	}

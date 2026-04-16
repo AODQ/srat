@@ -24,7 +24,7 @@ static srat::HandlePool<srat::TileGrid, ImplTileGrid> sTileGridPool = (
 
 void tile_grid_bin_triangle(
 	srat::TileGrid & grid,
-	u32v2 tile,
+	i32v2 tile,
 	u32 const triangleIndex
 ) {
 	// assign a triangle to a tile bin
@@ -87,10 +87,10 @@ void srat::tile_grid_destroy(srat::TileGrid const & grid) {
 	sTileGridPool.free(grid);
 }
 
-u32v2 srat::tile_grid_tile_count(TileGrid const & grid) {
+i32v2 srat::tile_grid_tile_count(TileGrid const & grid) {
 	Let impl = sTileGridPool.get(grid);
 	SRAT_ASSERT(impl != nullptr);
-	return u32v2(impl->tileCountX, impl->tileCountY);
+	return i32v2((i32)impl->tileCountX, (i32)impl->tileCountY);
 }
 
 srat::slice<srat::TileTriangleData const>
@@ -154,11 +154,11 @@ void srat::tile_grid_bin_triangle_bbox(
 
 	for (auto y = i32{minTile.y}; y <= maxTile.y; ++y)
 	for (auto x = i32{minTile.x}; x <= maxTile.x; ++x) {
-		tile_grid_bin_triangle(grid, u32v2(x, y), triangleIndex);
+		tile_grid_bin_triangle(grid, i32v2(x, y), triangleIndex);
 	};
 }
 
-srat::TileBin & srat::tile_grid_bin(TileGrid const & grid, u32v2 const & tile) {
+srat::TileBin & srat::tile_grid_bin(TileGrid const & grid, i32v2 const & tile) {
 	auto & impl = *sTileGridPool.get(grid);
 	Let tileIndex = u32 {(tile.y * impl.tileCountX) + tile.x};
 	SRAT_ASSERT(tileIndex < (impl.tileCountX * impl.tileCountY));
@@ -175,10 +175,10 @@ bool srat::tile_grid_valid(TileGrid const & grid) {
 
 #include <srat/gfx-image.hpp>
 
-u32v2 srat::viewport_tile_count(srat::gfx::Viewport const & viewport) {
+i32v2 srat::viewport_tile_count(srat::gfx::Viewport const & viewport) {
 	Let kTileDim = srat_tile_size();
 	return (
-		  (viewport.dim + u32v2(kTileDim - 1, kTileDim - 1))
-		/ u32v2(kTileDim, kTileDim)
+		  (viewport.dim + i32v2(kTileDim - 1, kTileDim - 1))
+		/ i32v2(kTileDim, kTileDim)
 	);
 }

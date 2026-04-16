@@ -18,7 +18,7 @@ namespace srat {
 		srat::slice<triangle_position_t>  outPositions;
 		srat::slice<triangle_depth_t> outDepth;
 		srat::slice<triangle_perspective_w_t> outPerspectiveW;
-		srat::slice<triangle_color_t> outColors;
+		srat::slice<f32v2> outUvs;
 		u32 const attrOffset;
 	};
 	void rasterizer_phase_vertex(RasterizerStageVertexParams const & params);

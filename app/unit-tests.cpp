@@ -12,6 +12,4 @@ void unit_tests(i32 const argc, char const * const * argv)
 	int res = context.run();
 	if (context.shouldExit())
 		exit(res);
-
-	SRAT_CLEAN_EXIT();
 }

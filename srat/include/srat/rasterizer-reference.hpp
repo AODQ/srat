@@ -12,9 +12,10 @@ namespace srat {
 		srat::array<i32v2, 3> screenPos {};
 		srat::array<float, 3> depth {};
 		srat::array<float, 3> perspectiveW {};
-		srat::array<f32v4, 3> color {};
+		srat::array<f32v2, 3> uv {};
 	};
 	void rasterizer_reference_render(
+		srat::gfx::Image const & boundTexture,
 		srat::slice<ReferenceTriangle const> const & triangles,
 		srat::gfx::Viewport const & viewport,
 		srat::gfx::Image const & targetColor,

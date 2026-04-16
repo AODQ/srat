@@ -10,6 +10,7 @@ static inline f32 scalarEdge(
 }
 
 void srat::rasterizer_reference_render(
+	srat::gfx::Image const & boundTexture,
 	srat::slice<ReferenceTriangle const> const & triangles,
 	srat::gfx::Viewport const & viewport,
 	srat::gfx::Image const & targetColor,
@@ -17,7 +18,7 @@ void srat::rasterizer_reference_render(
 ) {
 	auto colorData = srat::gfx::image_data32(targetColor);
 	auto depthData = srat::gfx::image_data16(targetDepth);
-	u32v2 const dim = viewport.dim;
+	i32v2 const dim = viewport.dim;
 
 	for (auto const& tri : triangles)
 	{
@@ -76,11 +77,15 @@ void srat::rasterizer_reference_render(
 					+ b2 * tri.depth[2] * tri.perspectiveW[2]
 				) * w;
 
-				f32v4 const interpColor = (
-					tri.color[0] * tri.perspectiveW[0] * b0 +
-					tri.color[1] * tri.perspectiveW[1] * b1 +
-					tri.color[2] * tri.perspectiveW[2] * b2
+				f32v2 const interpUV = (
+					tri.uv[0] * tri.perspectiveW[0] * b0 +
+					tri.uv[1] * tri.perspectiveW[1] * b1 +
+					tri.uv[2] * tri.perspectiveW[2] * b2
 				) * w;
+
+				f32v4 const finalColor = (
+					srat::gfx::image_reference_sample(boundTexture, interpUV)
+				);
 
 				// Depth test + write
 				// SRAT_ASSERT(interpDepth >= 0.0f && interpDepth <= 1.0f);
@@ -93,7 +98,7 @@ void srat::rasterizer_reference_render(
 				if (depth16 < depthData[idx]) { continue; }
 
 				depthData[idx] = depth16;
-				colorData[idx] = as_rgba(interpColor);
+				colorData[idx] = as_rgba(finalColor);
 			}
 		}
 	}

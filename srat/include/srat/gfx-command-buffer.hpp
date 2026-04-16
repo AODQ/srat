@@ -18,12 +18,12 @@ namespace srat::gfx {
 
 	struct VertexAttributes {
 		VertexAttributeDescriptor position;
-		VertexAttributeDescriptor color;
 		VertexAttributeDescriptor normal;
 		VertexAttributeDescriptor uv;
 	};
 
 	struct DrawInfo {
+		srat::gfx::Image boundTexture;
 		f32m44 modelViewProjection {};
 		VertexAttributes vertexAttributes {};
 		srat::slice<u32 const> indices {};

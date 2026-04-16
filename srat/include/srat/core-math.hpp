@@ -71,6 +71,8 @@ struct i32v2 {
 	i32v2 operator /(i32v2 const s) const { return { x/s.x, y/s.y, }; }
 	i32v2 operator -(i32v2 const s) const { return { x-s.x, y-s.y, }; }
 	i32v2 operator +(i32v2 const s) const { return { x+s.x, y+s.y, }; }
+
+	bool operator==(i32v2 const & s) const = default;
 };
 
 inline i32v2 i32v2_clamp(i32v2 const v, i32v2 const min, i32v2 const max) {
@@ -93,12 +95,23 @@ inline i32v2 i32v2_min(i32v2 const a, i32v2 const b) {
 struct f32v2 {
 	f32 x, y;
 
-	f32v2 operator /(f32v2 const s) const { return { x/s.x, y/s.y, }; }
-	f32v2 operator /(f32 const s) const { return { x/s, y/s, }; }
-	f32v2 operator -(f32v2 const s) const { return { x-s.x, y-s.y, }; }
-	f32v2 operator +(f32v2 const s) const { return { x+s.x, y+s.y, }; }
-	f32v2 operator *(f32v2 const s) const { return { x*s.x, y*s.y, }; }
-	f32v2 operator *(f32 const s) const { return { x*s, y*s, }; }
+	[[nodiscard]] constexpr inline f32v2 operator /(f32v2 const s) const
+		{ return { x/s.x, y/s.y, }; }
+	[[nodiscard]] constexpr inline f32v2 operator /(f32 const s) const
+		{ return { x/s, y/s, }; }
+	[[nodiscard]] constexpr inline f32v2 operator -(f32v2 const s) const
+		{ return { x-s.x, y-s.y, }; }
+	[[nodiscard]] constexpr inline f32v2 operator +(f32v2 const s) const
+		{ return { x+s.x, y+s.y, }; }
+	[[nodiscard]] constexpr inline f32v2 operator *(f32v2 const s) const
+		{ return { x*s.x, y*s.y, }; }
+	[[nodiscard]] constexpr inline f32v2 operator *(f32 const s) const
+		{ return { x*s, y*s, }; }
+
+	constexpr inline f32v2 operator+=(f32v2 const s) {
+		x += s.x; y += s.y;
+		return *this;
+	}
 };
 
 // -----------------------------------------------------------------------------
@@ -184,7 +197,32 @@ struct f32v4 {
 // -- i32x8/u32x8
 // -----------------------------------------------------------------------------
 
-struct i32x8 { __m256i v; };
+struct i32x8 {
+	__m256i v;
+	[[nodiscard]] inline i32x8 operator&(i32x8 const & o) const {
+		return { _mm256_and_si256(v, o.v) };
+	}
+	[[nodiscard]] inline i32x8 operator|(i32x8 const & o) const {
+		return { _mm256_or_si256(v, o.v) };
+	}
+	[[nodiscard]] inline i32x8 operator^(i32x8 const & o) const {
+		return { _mm256_xor_si256(v, o.v) };
+	}
+	[[nodiscard]] inline i32x8 operator~() const {
+		return { _mm256_xor_si256(v, _mm256_set1_epi32(-1)) };
+	}
+	[[nodiscard]] inline i32x8 operator+(i32x8 const & o) const {
+		return { _mm256_add_epi32(v, o.v) };
+	}
+	[[nodiscard]] inline i32x8 operator-(i32x8 const & o) const {
+		return { _mm256_sub_epi32(v, o.v) };
+	}
+
+	[[nodiscard]] inline i32x8 operator*(i32x8 const & o) const {
+		return { _mm256_mullo_epi32(v, o.v) };
+	}
+};
+
 struct u32x8 {
 	__m256i v;
 	u32x8 operator&(u32x8 const & o) const {
@@ -229,6 +267,8 @@ inline u32 u32x8_ballot(u32x8 const & v) {
 }
 inline bool u32x8_any(u32x8 const & v) { return u32x8_ballot(v) != 0; }
 inline bool u32x8_all(u32x8 const & v) { return u32x8_ballot(v) == 0xFF; }
+[[nodiscard]] inline bool u32x8_mask_sign_bit(u32x8 const & v)
+	{ return _mm256_movemask_epi8(v.v) != 0; }
 
 // -----------------------------------------------------------------------------
 // -- f32x8
@@ -264,20 +304,34 @@ struct f32x8 {
 		return 0.0f; // silence warning
 	}
 
-	f32x8 operator+(f32x8 const & o) const { return { _mm256_add_ps(v, o.v) }; }
-	f32x8 operator-(f32x8 const & o) const { return { _mm256_sub_ps(v, o.v) }; }
-	f32x8 operator*(f32x8 const & o) const { return { _mm256_mul_ps(v, o.v) }; }
-	f32x8 operator/(f32x8 const & o) const { return { _mm256_div_ps(v, o.v) }; }
+	[[nodiscard]] inline f32x8 reciprocal() const
+		{ return { _mm256_rcp_ps(v) }; }
+	[[nodiscard]] inline f32x8 reciprocal_newton_raphson() const {
+		// one iteration of Newton-Raphson refinement for better accuracy
+		f32x8 rcp = reciprocal();
+		return rcp * (f32x8 { _mm256_set1_ps(2.0f) } - (*this * rcp));
+	}
 
-	f32x8 operator-() const { return { _mm256_sub_ps(_mm256_setzero_ps(), v) }; }
+	[[nodiscard]] inline f32x8 operator+(f32x8 const & o) const
+		{ return { _mm256_add_ps(v, o.v) }; }
+	[[nodiscard]] inline f32x8 operator-(f32x8 const & o) const
+		{ return { _mm256_sub_ps(v, o.v) }; }
+	[[nodiscard]] inline f32x8 operator*(f32x8 const & o) const
+		{ return { _mm256_mul_ps(v, o.v) }; }
+	[[nodiscard]] inline f32x8 operator/(f32x8 const & o) const
+		{ return { _mm256_div_ps(v, o.v) }; }
 
-	u32x8 operator<(f32x8 const & o) const
+
+	[[nodiscard]] inline f32x8 operator-() const
+		{ return { _mm256_sub_ps(_mm256_setzero_ps(), v) }; }
+
+	[[nodiscard]] inline u32x8 operator<(f32x8 const & o) const
 		{ return { _mm256_castps_si256(_mm256_cmp_ps(v, o.v, _CMP_LT_OQ)) }; }
-	u32x8 operator>(f32x8 const & o) const
+	[[nodiscard]] inline u32x8 operator>(f32x8 const & o) const
 		{ return { _mm256_castps_si256(_mm256_cmp_ps(v, o.v, _CMP_GT_OQ)) }; }
-	u32x8 operator<=(f32x8 const & o) const
+	[[nodiscard]] inline u32x8 operator<=(f32x8 const & o) const
 		{ return { _mm256_castps_si256(_mm256_cmp_ps(v, o.v, _CMP_LE_OQ)) }; }
-	u32x8 operator>=(f32x8 const & o) const
+	[[nodiscard]] inline u32x8 operator>=(f32x8 const & o) const
 		{ return { _mm256_castps_si256(_mm256_cmp_ps(v, o.v, _CMP_GE_OQ)) }; }
 };
 
@@ -290,8 +344,9 @@ inline f32x8 f32x8_load(srat::slice<f32, 8> const & in)
 inline f32 f32x8_lane0(f32x8 const & v) { return _mm256_cvtss_f32(v.v); }
 inline void f32x8_store(f32x8 const & v, srat::slice<f32, 8> out)
 	{ _mm256_storeu_ps(out.ptr(), v.v); }
-inline f32x8 f32x8_splat(f32 f) { return { _mm256_set1_ps(f) }; }
-inline f32x8 f32x8_zero() { return f32x8_splat(0.0f); }
+[[nodiscard]] constexpr inline f32x8 f32x8_splat(f32 f)
+	{ return { _mm256_set1_ps(f) }; }
+constexpr inline f32x8 f32x8_zero() { return f32x8_splat(0.0f); }
 
 // Fused multiply-add: a * b + c
 inline f32x8 f32x8_fmadd(f32x8 const & a, f32x8 const & b, f32x8 const & c) {
@@ -335,10 +390,109 @@ inline f32x8 f32x8_sqrt(f32x8 const & v) { return { _mm256_sqrt_ps(v.v) }; }
 inline f32x8 f32x8_rsqrt(f32x8 const & v) { return { _mm256_rsqrt_ps(v.v) }; }
 
 // -----------------------------------------------------------------------------
-// -- f32x8x2
+// -- i32v2x8
 // -----------------------------------------------------------------------------
 
-struct f32v2x8 { srat::array<f32x8, 2> v; };
+struct i32v2x8 {
+	union {
+		srat::array<i32x8, 2> v;
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic"
+		struct { i32x8 x, y; };
+		#pragma GCC diagnostic pop
+	};
+
+	i32v2x8() = default;
+	i32v2x8(i32x8 const & x, i32x8 const & y) : v{ x, y } {}
+
+	i32v2x8 operator+(i32v2x8 const & o) const {
+		return {
+			v[0] + o.v[0],
+			v[1] + o.v[1],
+		};
+	}
+	i32v2x8 operator-(i32v2x8 const & o) const {
+		return {
+			v[0] - o.v[0],
+			v[1] - o.v[1],
+		};
+	}
+};
+
+struct f32v2x8;
+
+i32v2x8 i32v2x8_from_f32v2x8(f32v2x8 const & v);
+
+// -----------------------------------------------------------------------------
+// -- f32v2x8
+// -----------------------------------------------------------------------------
+
+struct f32v2x8 {
+	union {
+		srat::array<f32x8, 2> v;
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wpedantic"
+		struct { f32x8 x, y; };
+		#pragma GCC diagnostic pop
+	};
+
+	f32v2x8() = default;
+	f32v2x8(f32x8 const & x, f32x8 const & y) : v{ x, y } {}
+
+	f32v2x8 operator+(f32v2x8 const & o) const {
+		return {
+			v[0] + o.v[0],
+			v[1] + o.v[1],
+		};
+	}
+	f32v2x8 operator-(f32v2x8 const & o) const {
+		return {
+			v[0] - o.v[0],
+			v[1] - o.v[1],
+		};
+	}
+	f32v2x8 operator*(f32v2x8 const & o) const {
+		return {
+			v[0] * o.v[0],
+			v[1] * o.v[1],
+		};
+	}
+	f32v2x8 operator/(f32v2x8 const & o) const {
+		return {
+			v[0] / o.v[0],
+			v[1] / o.v[1],
+		};
+	}
+
+	f32v2x8 operator*(f32x8 const & s) const {
+		return { v[0] * s, v[1] * s, };
+	}
+};
+
+inline f32v2x8 f32v2x8_load(srat::slice<f32, 16> const & in) {
+	return f32v2x8 {
+		f32x8_load(in.as<8>()),
+		f32x8_load(in.subslice(8).as<8>()),
+	};
+}
+inline f32v2x8 f32v2x8_splat(srat::slice<f32, 2> in) {
+	return {
+		f32x8_splat(in[0]),
+		f32x8_splat(in[1]),
+	};
+}
+inline f32v2x8 f32v2x8_splat(f32v2 const & v) {
+	return {
+		f32x8_splat(v.x),
+		f32x8_splat(v.y),
+	};
+}
+inline f32v2x8 f32v2x8_splat(f32 const x, f32 const y) {
+	return {
+		f32x8_splat(x),
+		f32x8_splat(y),
+	};
+}
 
 // -----------------------------------------------------------------------------
 // -- f32x8x3
@@ -347,7 +501,7 @@ struct f32v2x8 { srat::array<f32x8, 2> v; };
 struct f32v3x8 { srat::array<f32x8, 3> v; };
 
 // -----------------------------------------------------------------------------
-// -- f32x8x4
+// -- f32v4x8
 // -----------------------------------------------------------------------------
 
 struct f32v4x8 {
@@ -823,4 +977,108 @@ inline u32 as_rgba(f32v4 const & color) {
 	u32 b = (u32)(f32_clamp(color.z, 0.0f, 1.0f) * 255.0f + 0.5f);
 	u32 a = (u32)(f32_clamp(color.w, 0.0f, 1.0f) * 255.0f + 0.5f);
 	return (a << 24) | (b << 16) | (g << 8) | r;
+}
+
+// -----------------------------------------------------------------------------
+// -- free form funcs
+// -----------------------------------------------------------------------------
+// all above free form funcs should be moved to here
+
+[[nodiscard]] inline i32x8 f32x8_to_i32x8_trunc(f32x8 const & v) {
+	return { _mm256_cvttps_epi32(v.v) };
+}
+[[nodiscard]] inline i32v2x8 f32v2x8_to_i32v2x8_floor(f32v2x8 const & v) {
+	return {
+		f32x8_to_i32x8_trunc(v.x),
+		f32x8_to_i32x8_trunc(v.y),
+	};
+}
+
+[[nodiscard]] inline i32x8 f32x8_to_i32x8_round(f32x8 const & v) {
+	return { _mm256_cvtps_epi32(v.v) };
+}
+[[nodiscard]] inline i32v2x8 f32v2x8_to_i32v2x8_round(f32v2x8 const & v) {
+	return {
+		f32x8_to_i32x8_round(v.x),
+		f32x8_to_i32x8_round(v.y),
+	};
+}
+
+[[nodiscard]] inline i32x8 i32x8_clamp(
+	i32x8 const & v, i32x8 const & min, i32x8 const & max
+) {
+	return {
+		_mm256_max_epi32(min.v, _mm256_min_epi32(max.v, v.v))
+	};
+}
+[[nodiscard]] inline i32v2x8 i32v2x8_clamp(
+	i32v2x8 const & v, i32v2x8 const & min, i32v2x8 const & max
+) {
+	return {
+		i32x8_clamp(v.x, min.x, max.x),
+		i32x8_clamp(v.y, min.y, max.y),
+	};
+}
+
+[[nodiscard]] inline f32x8 f32x8_floor(f32x8 const & v)
+	{ return { _mm256_floor_ps(v.v) }; }
+
+[[nodiscard]] inline f32x8 f32x8_trunc(f32x8 const & v)
+	{ return { _mm256_round_ps(v.v, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC) }; }
+
+[[nodiscard]] inline f32v2x8 f32v2x8_floor(f32v2x8 const & v)
+	{ return { f32x8_floor(v.x), f32x8_floor(v.y), }; }
+
+[[nodiscard]] inline f32v2x8 f32v2x8_trunc(f32v2x8 const & v)
+	{ return { f32x8_trunc(v.x), f32x8_trunc(v.y), }; }
+
+
+// a*b + c
+[[nodiscard]] inline f32x8 f32x8_madd(
+	f32x8 const & a, f32x8 const & b, f32x8 const & c
+) {
+	return { _mm256_fmadd_ps(a.v, b.v, c.v) };
+}
+[[nodiscard]] inline f32v2x8 f32v2x8_madd(
+	f32v2x8 const & a, f32v2x8 const & b, f32v2x8 const & c
+) {
+	return { f32x8_madd(a.x, b.x, c.x), f32x8_madd(a.y, b.y, c.y), };
+}
+
+// a - b*c
+[[nodiscard]] inline f32x8 f32x8_nmadd(
+	f32x8 const & a, f32x8 const & b, f32x8 const & c
+) {
+	return { _mm256_fnmadd_ps(a.v, b.v, c.v) };
+}
+[[nodiscard]] inline f32v2x8 f32v2x8_nmadd(
+	f32v2x8 const & a, f32v2x8 const & b, f32v2x8 const & c
+) {
+	return { f32x8_nmadd(a.x, b.x, c.x), f32x8_nmadd(a.y, b.y, c.y), };
+}
+
+[[nodiscard]] inline f32x8 f32x8_modulo(f32x8 const & a, f32x8 const & b) {
+	f32x8 const div = a / b;
+	f32x8 const divFloor = f32x8_floor(div);
+	return f32x8 { f32x8_nmadd(divFloor, b, a) };
+}
+
+[[nodiscard]] inline f32v2x8 f32v2x8_modulo(
+	f32v2x8 const & a, f32v2x8 const & b
+) {
+	return { f32x8_modulo(a.x, b.x), f32x8_modulo(a.y, b.y), };
+}
+
+[[nodiscard]] inline i32v2x8 i32v2x8_splat(i32 const x, i32 const y) {
+	return {
+		i32x8_splat(x),
+		i32x8_splat(y),
+	};
+}
+
+[[nodiscard]] inline f32x8 f32x8_memory_gather(
+	float const * const address,
+	i32x8 const & offsets
+) {
+	return { _mm256_i32gather_ps(address, offsets.v, 4) };
 }

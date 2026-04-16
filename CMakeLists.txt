@@ -161,10 +161,10 @@ target_compile_options(
 )
 target_compile_definitions(
 	srat
-	PRIVATE
-	$<$<CONFIG:Debug>:SRAT_DEBUG_IMPL=1>
+	INTERFACE
 	$<$<CONFIG:RelWithDebInfo>:SRAT_DEBUG_IMPL=0>
 	$<$<CONFIG:Release>:SRAT_DEBUG_IMPL=0>
+	$<$<CONFIG:Debug>:SRAT_DEBUG_IMPL=1>
 )
 target_link_options(
 	srat

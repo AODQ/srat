@@ -21,11 +21,19 @@ struct AllocArena {
 	);
 
 	// allocate N contiguous elements
-	T * allocate(u32 const elementCount, u32 alignment = alignof(T));
+	srat::slice<T> allocate(u32 const elementCount, u32 alignment = alignof(T));
 
 	inline srat::slice<T> data_ptr() {
+		if (allocator.allocatedCount() == 0) {
+			return srat::slice<T>(nullptr, 0);
+		}
 		return srat::slice<T>(data, allocator.allocatedCount());
 	}
+
+	// avoid using below, prefer data_ptr if possible. The reason to use
+	// data_ptr_raw is if you only want the base ptr, data_ptr can return null
+	// if no allocations were made yet.
+	inline T * data_ptr_raw() { return data; }
 
 	void clear();
 	[[nodiscard]] bool empty() const;
@@ -101,10 +109,7 @@ private:
 		std::index_sequence<Is ...>
 	) {
 		Let slices = std::make_tuple(
-			srat::slice(
-				std::get<Is>(allocators).allocate(elementCount),
-				elementCount
-			) ...
+			std::get<Is>(allocators).allocate(elementCount) ...
 		);
 		SRAT_ASSERT(
 			// if any allocation failed, they must all fail (or all succeed)
@@ -208,7 +213,10 @@ srat::AllocArena<T>::AllocArena::~AllocArena() {
 }
 
 template <typename T>
-T * srat::AllocArena<T>::allocate(u32 const elementCount, u32 alignment) {
+srat::slice<T> srat::AllocArena<T>::allocate(
+	u32 const elementCount,
+	u32 const alignment
+) {
 	Let block = (
 		allocator.allocate({
 			.elementCount = elementCount,
@@ -216,9 +224,12 @@ T * srat::AllocArena<T>::allocate(u32 const elementCount, u32 alignment) {
 		})
 	);
 	if (block.elementCount == 0) {
-		return nullptr; // allocation failed
+		return {nullptr, 0}; // allocation failed
 	}
-	return data + block.elementOffset;
+	return {
+		data + block.elementOffset,
+		block.elementCount,
+	};
 }
 
 template <typename T>

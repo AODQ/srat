@@ -23,8 +23,13 @@ bool & srat_sequential_writes();
 bool & srat_rasterize_parallel();
 bool & srat_vertex_parallel();
 
-#define SRAT_CLEAN_EXIT() \
-	SRAT_ASSERT(srat::virtual_range_allocator_all_empty());
+// just a temp hack to change shader mode at runtime
+enum struct ShaderMode {
+	DisplayUv,
+	DisplayDepth,
+	DisplayColor,
+};
+ShaderMode & srat_shader_mode();
 
 // -----------------------------------------------------------------------------
 // -- tracy
