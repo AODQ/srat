@@ -156,7 +156,18 @@ f32v4x8 srat::gfx::image_sample(
 	f32v2x8 const wrappedUV = (
 		f32v2x8_modulo(scaledUV, f32v2x8_splat((f32)dim.x, (f32)dim.y))
 	);
-	printf("Wrapped UV: %f %f\n", wrappedUV.v[0].lane(0), wrappedUV.v[0].lane(0));
+	// {
+	// 	// for now just return the UV
+	// 	f32v4x8 debugColor = f32v4x8 {
+	// 		wrappedUV.x,
+	// 		wrappedUV.y,
+	// 		f32x8_splat(0.0f),
+	// 		f32x8_splat(0.0f)
+	// 	};
+	// 	// normalize for debug visualization
+	// 	debugColor = debugColor / f32v4x8_splat((f32)dim.x, (f32)dim.y, 1.0f, 1.0f);
+	// 	return debugColor;
+	// }
 	i32v2x8 const texelCoord = f32v2x8_to_i32v2x8_floor(wrappedUV);
 	// below reference for clamped
 	i32v2x8 const clampedCoord = (

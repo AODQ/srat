@@ -197,30 +197,6 @@ Division by zero — rcpArea when triangle area ≈ 0 (degenerate tri).
 srat_tile_size() returns u64 & (runtime-configurable) — arithmetic
 with it can silently widen or narrow; be explicit with casts.
 
-Rasterizer correctness
-
-Off-by-one in tile/bbox math: the correct pattern is
-(bounds.max - i32v2(1,1)) before dividing by tile size, and clamping
-both min and max tile coords. If either is missing, triangles bleed
-into wrong tiles or get skipped.
-Bbox binning is conservative — a triangle binned into a tile may not
-actually cover any pixels in that tile. The rasterizer must still do a
-per-pixel inside test; never skip it.
-Depth convention: depth is stored as u16 in [0, UINT16_MAX];
-smaller = closer. The correct test is if (depth16 > rowDepths[lane]) continue; — failing means the stored pixel is closer, so discard the
-incoming fragment. Getting the comparison backwards produces wrong
-depth silently.
-Screen-space Y flip: NDC Y is negated when converting to screen coords
-((1.0f - ndc.y) * 0.5f * height). Forgetting the flip produces a
-vertically mirrored image.
-Perspective divide must happen before f32v4_clip_to_screen — passing
-raw clip coords produces wrong screen positions.
-Column-major matrix multiply order: proj * view applies view first.
-Check whether the caller has TRS compose order right.
-Back-face cull uses area >= -epsilon (skip if area is not strongly
-negative) — the sign convention is CCW-front in screen space after Y
-flip. Changing epsilon or the comparison direction breaks culling.
-
 SIMD lane logic
 
 u32x8_ballot reads the sign bit, not the whole lane. A mask from
@@ -232,20 +208,3 @@ set), the result is b (the second arg), not a. This is because
 _mm256_blendv_ps blends from the second source when the control bit
 is 1.
 
-
-Optimization notes
-When suggesting optimizations:
-
-Prefer branchless SIMD over scalar loops for per-pixel work.
-f32x8_rsqrt + Newton-Raphson is faster than 1.f / f32x8_sqrt for
-normalizations where ~0.1% error is acceptable.
-Prefer SoA (struct of arrays) over AoS for data touched by SIMD.
-Tile binning uses a conservative bbox — a tighter per-edge test in
-tile_grid_bin_triangle_bbox can reduce overdraw in rasterization.
-Arena allocators beat std::vector for per-frame scratch data; suggest
-replacing heap allocs in hot paths with arena allocs.
-Avoid std::vector resizes inside per-triangle loops; pre-reserve or
-use arena-backed storage.
-The interpolant system (Interpolant<T>) precomputes ddxStep8 (8×
-the per-pixel step) to amortize the multiply across the SIMD group;
-keep this pattern when adding new interpolated attributes.

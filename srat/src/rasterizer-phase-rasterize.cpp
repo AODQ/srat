@@ -34,7 +34,7 @@ static inline void rasterize_tile_write_pixel(
 					f32_clamp(depth16Lanes[lane], 0.f, 1.f) * (f32)UINT16_MAX
 				)
 			);
-			if (depth16 < rowDepths[lane]) {
+			if (depth16 > rowDepths[lane]) {
 				continue;
 			}
 
@@ -349,7 +349,8 @@ static void rasterize_triangle(
 					:
 					f32v4x8_splat(1.0f, 0.0f, 1.0f, 1.0f) // magenta
 				);
-				f32x8 const interpDepth = laneDepthIt * wPersp;
+				// perspective-correct depth, no need for wPersp
+				f32x8 const interpDepth = laneDepthIt;
 
 				f32v4x8 finalColor;
 				switch (srat_shader_mode()) {

@@ -987,12 +987,6 @@ inline u32 as_rgba(f32v4 const & color) {
 [[nodiscard]] inline i32x8 f32x8_to_i32x8_trunc(f32x8 const & v) {
 	return { _mm256_cvttps_epi32(v.v) };
 }
-[[nodiscard]] inline i32v2x8 f32v2x8_to_i32v2x8_floor(f32v2x8 const & v) {
-	return {
-		f32x8_to_i32x8_trunc(v.x),
-		f32x8_to_i32x8_trunc(v.y),
-	};
-}
 
 [[nodiscard]] inline i32x8 f32x8_to_i32x8_round(f32x8 const & v) {
 	return { _mm256_cvtps_epi32(v.v) };
@@ -1081,4 +1075,11 @@ inline u32 as_rgba(f32v4 const & color) {
 	i32x8 const & offsets
 ) {
 	return { _mm256_i32gather_ps(address, offsets.v, 4) };
+}
+
+[[nodiscard]] inline i32v2x8 f32v2x8_to_i32v2x8_floor(f32v2x8 const & v) {
+	return {
+		f32x8_to_i32x8_trunc(f32x8_floor(v.x)),
+		f32x8_to_i32x8_trunc(f32x8_floor(v.y)),
+	};
 }

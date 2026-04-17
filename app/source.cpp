@@ -16,7 +16,7 @@
 #include <numbers>
 
 static constexpr i32v2 kWindowDim = { 1024, 576 };
-static constexpr i32v2 kTargetDim = { 512, 512 };
+static constexpr i32v2 kTargetDim = { 128, 128 };
 static bool animationEnabled = true;
 
 // -----------------------------------------------------------------------------
@@ -69,12 +69,12 @@ void raylib_shutdown()
 #pragma GCC diagnostic pop
 
 struct SratModel {
-	std::vector<f32v3> positions;
-	std::vector<f32v4> colors;
-	std::vector<f32v3> normals;
-	std::vector<f32v2> uvcoords;
 	struct Mesh {
 		std::vector<u32> indices;
+		std::vector<f32v3> positions;
+		std::vector<f32v4> colors;
+		std::vector<f32v3> normals;
+		std::vector<f32v2> uvcoords;
 		srat::gfx::DrawInfo drawInfo;
 	};
 	std::vector<Mesh> meshes;
@@ -160,75 +160,88 @@ SratModel loadModel(char const * objPath) {
 	auto & shapes = reader.GetShapes();
 	[[maybe_unused]] auto & materials = reader.GetMaterials();
 
-	// -- loop over attributes and store them
-	for (size_t v = 0; v < attrib.vertices.size() / 3; ++v) {
-		model.positions.emplace_back(
-			attrib.vertices[3*v+0],
-			attrib.vertices[3*v+1],
-			attrib.vertices[3*v+2]
-		);
-	}
-	for (size_t v = 0; v < attrib.normals.size() / 3; ++v) {
-		model.normals.emplace_back(
-			attrib.normals[3*v+0],
-			attrib.normals[3*v+1],
-			attrib.normals[3*v+2]
-		);
-	}
-	for (size_t v = 0; v < attrib.texcoords.size() / 2; ++v) {
-		model.uvcoords.emplace_back(
-			attrib.texcoords[2*v+0],
-			attrib.texcoords[2*v+1]
-		);
-	}
-
-
 	auto vec2slice = [](auto & arr) -> srat::slice<u8 const> {
 		return srat::slice(arr.data(), arr.size()).template cast<u8 const>();
 	};
 
-	auto const & modelSlice = vec2slice(model.positions);
-	auto const & colorSlice = vec2slice(model.colors);
-	auto const & normalSlice = vec2slice(model.normals);
-	auto const & uvSlice = vec2slice(model.uvcoords);
-
-	// -- loop shapes
-	for (const auto & shape : shapes) {
-
+	for (auto const & shape : shapes) {
 		SratModel::Mesh mesh{};
 
-		for (auto const & index : shape.mesh.indices) {
-			mesh.indices.push_back(index.vertex_index);
+		std::map<std::tuple<i32, i32, i32>, u32> seen;
+
+		for (tinyobj::index_t const & idx : shape.mesh.indices) {
+			std::tuple<int, i32, i32> const key = {
+				idx.vertex_index,
+				idx.normal_index,
+				idx.texcoord_index,
+			};
+			auto [it, inserted] = seen.emplace(key, (u32)mesh.positions.size());
+			if (inserted) {
+				i32 const vi = idx.vertex_index;
+				mesh.positions.push_back(f32v3 {
+					attrib.vertices[3*vi+0],
+					attrib.vertices[3*vi+1],
+					attrib.vertices[3*vi+2],
+				});
+				i32 const ni = idx.normal_index;
+				mesh.normals.push_back(
+					ni >= 0
+					? f32v3 {
+						attrib.normals[3*ni+0],
+						attrib.normals[3*ni+1],
+						attrib.normals[3*ni+2],
+					}
+					: f32v3 { 0.0f, 0.0f, 0.0f }
+				);
+				i32 const ti = idx.texcoord_index;
+				mesh.uvcoords.push_back(
+					ti >= 0
+					? f32v2 {
+						attrib.texcoords[2*ti+0],
+						// OBJ V=0 is bottom; flip to V=0 top
+						1.0f - attrib.texcoords[2*ti+1],
+					}
+					: f32v2 { 0.0f, 0.0f }
+				);
+			}
+			mesh.indices.push_back(it->second);
 		}
 
+		srat::slice<u8 const> const posSlice = vec2slice(mesh.positions);
+		srat::slice<u8 const> const nrmSlice = vec2slice(mesh.normals);
+		srat::slice<u8 const> const uvSlice  = vec2slice(mesh.uvcoords);
+
 		mesh.drawInfo = srat::gfx::DrawInfo {
-			.boundTexture = srat::gfx::Image { 0 }, // not used in shader
+			.boundTexture = srat::gfx::Image { 0 },
 			.modelViewProjection = f32m44_identity(),
 			.vertexAttributes = {
 				.position = {
 					.byteStride = sizeof(f32v3),
-					.data = modelSlice,
+					.data = posSlice,
 				},
 				.normal = {
 					.byteStride = sizeof(f32v3),
-					.data = normalSlice,
+					.data = nrmSlice,
 				},
 				.uv = {
 					.byteStride = sizeof(f32v2),
 					.data = uvSlice,
 				},
 			},
-			.indices = vec2slice(mesh.indices).cast<u32 const>(),
+			.indices = (
+				vec2slice(mesh.indices).cast<u32 const>()
+			),
 			.indexCount = (u32)mesh.indices.size(),
 		};
-
 		model.meshes.emplace_back(std::move(mesh));
 	}
 
 	// -- calculate bounds
-	for (const auto & pos : model.positions) {
-		model.boundsMin = f32v3_min(model.boundsMin, pos);
-		model.boundsMax = f32v3_max(model.boundsMax, pos);
+	for (const auto & mesh : model.meshes) {
+		for (const auto & pos : mesh.positions) {
+			model.boundsMin = f32v3_min(model.boundsMin, pos);
+			model.boundsMax = f32v3_max(model.boundsMax, pos);
+		}
 	}
 
 	return model;
@@ -255,12 +268,15 @@ void draw_scene_unit_tests(
 	// -- clear depth
 	Let depthPtr = srat::slice<u16> {srat::gfx::image_data16(depthTarget)};
 	for (u64 i = 0; i < (u64)kTargetDim.x * (u64)kTargetDim.y; ++i) {
-		depthPtr[i] = 0; // max depth
+		depthPtr[i] = UINT16_MAX; // max depth
 	}
 
 	// -- build modelviewproj
 	f32m44 const proj = f32m44_perspective(
-		sCam.fovDeg * (std::numbers::pi_v<float> / 180.f), /*aspect=*/ 1.0f, 0.1f, 500.0f
+		sCam.fovDeg * (std::numbers::pi_v<float> / 180.f),
+		/*aspect=*/ 1.0f,
+		0.1f,
+		1'000.0f
 	);
 	// rotate around the center of the model, and move back so it's visible
 	f32m44 const view = compute_orbit_view(model, sCam);
@@ -313,7 +329,7 @@ void draw_scene(
 	// -- clear depth
 	Let depthPtr = srat::slice<u16> {srat::gfx::image_data16(depthTarget)};
 	for (u64 i = 0; i < (u64)kTargetDim.x * (u64)kTargetDim.y; ++i) {
-		depthPtr[i] = 0; // max depth
+		depthPtr[i] = UINT16_MAX; // max depth
 	}
 
 	// -- build modelviewproj
@@ -645,7 +661,10 @@ i32 main(i32 const argc, char const * const * argv)
 		// viewport
 		{
 			ImGui::Begin("viewport");
-			rlImGuiImage(&deviceTexOut);
+			ImGui::Image(
+			 	ImTextureID(deviceTexOut.id),
+				ImVec2(float(deviceTexOut.width)*2, float(deviceTexOut.height)*2)
+			);
 			ImGui::End();
 		}
 
