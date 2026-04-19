@@ -45,9 +45,9 @@ void srat::rasterizer_phase_vertex(
 		Let c2 = f32v4{params.draw.modelViewProjection * f32v4(p2, 1.0f)};
 
 		// reject triangle if it's degenerate
-		// if (c0.w <= skEpsilon || c1.w <= skEpsilon || c2.w <= skEpsilon) {
-		// 	continue;
-		// }
+		if (c0.w <= skEpsilon || c1.w <= skEpsilon || c2.w <= skEpsilon) {
+			continue;
+		}
 
 		// TODO reject triangle if it doesn't fit on screen
 
@@ -57,11 +57,13 @@ void srat::rasterizer_phase_vertex(
 		Let ndc2 = f32v3 {c2.xyz() / c2.w};
 
 		// -- NDC to screen-space
+		// note that the y-flip and x-flip matter, they can both
+		// cause back-facing triangles to become front-facing and vise-versa
 		Let ndcToScreen = [&params](f32v3 const ndc) -> i32v2 {
 			Let viewportDim = params.viewport.dim;
 			return i32v2 {
 				T_roundf_positive<i32>((1.0f-ndc.x) * 0.5f * (f32)viewportDim.x),
-				T_roundf_positive<i32>((1.0f-ndc.y) * 0.5f * (f32)viewportDim.y),
+				T_roundf_positive<i32>((1.0f+ndc.y) * 0.5f * (f32)viewportDim.y),
 			};
 		};
 		Let screen0 = i32v2 { ndcToScreen(ndc0) };
@@ -69,12 +71,12 @@ void srat::rasterizer_phase_vertex(
 		Let screen2 = i32v2 { ndcToScreen(ndc2) };
 
 		// -- skip back-facing triangles
-		// Let area = f32 {
-		// 	f32v2_triangle_parallelogram_area(
-		// 		as_f32v2(screen0), as_f32v2(screen1), as_f32v2(screen2)
-		// 	)
-		// };
-		// if (area <= skEpsilon) { continue; }
+		Let area = f32 {
+			f32v2_triangle_parallelogram_area(
+				as_f32v2(screen0), as_f32v2(screen1), as_f32v2(screen2)
+			)
+		};
+		if (area <= skEpsilon) { continue; }
 
 		// -- store parameters
 		Let outAttrIdx = params.attrOffset + triIt * 3u;

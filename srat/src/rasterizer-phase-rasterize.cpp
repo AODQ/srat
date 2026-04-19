@@ -151,7 +151,7 @@ static void rasterize_triangle(
 	f32v2 const v0f = as_f32v2(sp0);
 	f32v2 const v1f = as_f32v2(sp1);
 	f32v2 const v2f = as_f32v2(sp2);
-	f32 const area = f32v2_triangle_parallelogram_area(v0f, v1f, v2f);
+	f32 const area = fabsf(f32v2_triangle_parallelogram_area(v0f, v1f, v2f));
 	f32 const rcpArea = 1.0f / area;
 
 	// -- bounding box

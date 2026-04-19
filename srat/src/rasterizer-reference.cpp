@@ -35,7 +35,7 @@ void srat::rasterizer_reference_render(
 		if (minX > maxX || minY > maxY) continue;
 
 		f32 const area = f32v2_triangle_parallelogram_area(v0, v1, v2);
-		// if (area <= 0.0001f) continue; // backface or degenerate
+		if (area <= 0.0001f) continue; // backface or degenerate
 
 		f32 const rcpArea = 1.0f / area;
 

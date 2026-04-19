@@ -1,7 +1,7 @@
 [ ] convert all the u32 to i32 for internal renderer
-[ ] implement the profiling 
+[ ] implement the profiling
 [ ] apply perf optimizations for raster and bin
-[ ] add support for texturing
+[x] add support for texturing
 [ ] add tiled image layout
 [ ] reimplement std::vector with a profiler that tracks per-frame allocs
 [ ] Hi-Z coarse occlusion

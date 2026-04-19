@@ -15,7 +15,7 @@
 #include <cstdint>
 #include <numbers>
 
-static constexpr i32v2 kWindowDim = { 1024, 576 };
+static constexpr i32v2 kWindowDim = { 1920, 1080 };
 static constexpr i32v2 kTargetDim = { 128, 128 };
 static bool animationEnabled = true;
 
@@ -520,6 +520,7 @@ i32 main(i32 const argc, char const * const * argv)
 	// SratModel model = loadModel("assets/sphere.obj");
 	// SratModel model = loadModel("assets/bunny.obj");
 	SratModel model = loadModel("assets/cube.obj");
+	// SratModel model = loadModel("assets/teapot.obj");
 #endif
 
 	// -- generate two unit test images with reference and normal device
@@ -600,6 +601,22 @@ i32 main(i32 const argc, char const * const * argv)
 		srat::gfx::image_destroy(unitTestImageReferenceDepth);
 		srat::gfx::image_destroy(unitTestImageDevice);
 		srat::gfx::image_destroy(unitTestImageDeviceDepth);
+	}
+
+	// -- one-shot performance suite
+	{
+		std::vector<srat::gfx::DrawInfo> modelMeshDrawInfos;
+		modelMeshDrawInfos.reserve(model.meshes.size());
+		for (auto const & mesh : model.meshes) {
+			modelMeshDrawInfos.push_back(mesh.drawInfo);
+		}
+		perf_suite_run_startup(PerfSuiteStartupConfig {
+			.device      = device,
+			.targetColor = imageColor,
+			.targetDepth = sratImageDepth,
+			.targetDim   = kTargetDim,
+			.modelMeshes = &modelMeshDrawInfos,
+		});
 	}
 
 	while (!WindowShouldClose())
