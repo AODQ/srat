@@ -20,7 +20,7 @@ bool & srat_temp_opt() {
 }
 
 bool & srat_sequential_writes() {
-	static bool sequential = false; // no perf difference
+	static bool sequential = true; // no perf difference
 	return sequential;
 }
 

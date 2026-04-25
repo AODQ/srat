@@ -1,5 +1,6 @@
+[ ] logging library
 [ ] convert all the u32 to i32 for internal renderer
-[ ] implement the profiling
+[x] implement the profiling
 [ ] apply perf optimizations for raster and bin
 [x] add support for texturing
 [ ] add tiled image layout

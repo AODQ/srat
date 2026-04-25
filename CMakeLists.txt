@@ -73,12 +73,6 @@ option(LEGACY "Instead of Wayland, use the legacy X11 backend on Linux" ON)
 add_subdirectory(external/tracy)
 
 # ------------------------------------------------------------------------------
-# -- tinyobjloader
-# ------------------------------------------------------------------------------
-
-add_subdirectory(external/tinyobjloader)
-
-# ------------------------------------------------------------------------------
 # -- raylib
 # ------------------------------------------------------------------------------
 
@@ -191,7 +185,7 @@ target_sources(
 	PRIVATE
 	app/source.cpp
 	app/perf-suite.cpp
-	app/tinyobjloader.cpp
+	app/model-loader.cpp
 	app/unit-test-alloc-arena.cpp
 	app/unit-test-alloc-virtual-range.cpp
 	app/unit-test-core-array.cpp
@@ -208,7 +202,7 @@ target_include_directories(
 	PRIVATE
 	external/doctest
 )
-target_link_libraries(app PRIVATE srat raylib imgui tinyobjloader)
+target_link_libraries(app PRIVATE srat raylib imgui)
 target_link_options(
 	app
 	PRIVATE

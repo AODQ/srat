@@ -87,11 +87,6 @@ srat::gfx::Image srat::gfx::image_create(ImageCreateInfo const & createInfo) {
 
 	if (createInfo.optInitialData.ptr() != nullptr) {
 		SRAT_ASSERT(createInfo.optInitialData.size() == byteCount);
-		printf(
-			"image_create: copying initial data of size %zu bytes (size: %zu)\n",
-			(uint64_t)createInfo.optInitialData.size(),
-			(uint64_t)impl.data.size()
-		);
 		std::memcpy(
 			impl.data.data(),
 			createInfo.optInitialData.ptr(),

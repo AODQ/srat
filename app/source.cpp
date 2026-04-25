@@ -1,5 +1,6 @@
 #include "gui.hpp"
 #include "perf-suite.hpp"
+#include "model-loader.hpp"
 
 #include <srat/alloc-virtual-range.hpp>
 #include <srat/core-types.hpp>
@@ -43,7 +44,7 @@ static_assert(
 	sizeof(kAppModeLabels) / sizeof(kAppModeLabels[0]) == (u32)AppMode::Count
 );
 
-static AppMode sAppMode = AppMode::PerfRaster;
+static AppMode sAppMode = AppMode::RunScene;
 
 void unit_tests(i32 const argc, char const * const * argv);
 
@@ -60,31 +61,6 @@ void raylib_shutdown()
 {
 	CloseWindow();
 }
-
-// generates a command buffer to draw for with a model
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wall"
-#pragma GCC diagnostic ignored "-Wunused-function"
-#include "tinyobjloader.h"
-#pragma GCC diagnostic pop
-
-struct SratModel {
-	struct Mesh {
-		std::vector<u32> indices;
-		std::vector<f32v3> positions;
-		std::vector<f32v4> colors;
-		std::vector<f32v3> normals;
-		std::vector<f32v2> uvcoords;
-		srat::gfx::DrawInfo drawInfo;
-	};
-	std::vector<Mesh> meshes;
-
-	f32v3 boundsMin { FLT_MAX, FLT_MAX, FLT_MAX };
-	f32v3 boundsMax { -FLT_MAX, -FLT_MAX, -FLT_MAX };
-
-	[[nodiscard]] f32v3 center() const { return (boundsMin + boundsMax) * 0.5f; }
-	[[nodiscard]] f32v3 size() const { return boundsMax - boundsMin; }
-};
 
 // -----------------------------------------------------------------------------
 // -- camera state (controlled via ImGui)
@@ -129,129 +105,10 @@ f32m44 compute_orbit_view(SratModel const & model, CameraState const & cam)
 	return f32m44_lookat(eye, target, up);
 }
 
-SratModel loadModel(char const * objPath) {
-	SratModel model {};
-	tinyobj::ObjReaderConfig readerConfig;
-	readerConfig.mtl_search_path = "./"; // Path to material files
-	tinyobj::ObjReader reader;
-
-	if (!reader.ParseFromFile(objPath, readerConfig)) {
-		if (!reader.Error().empty()) {
-			fprintf(stderr, "TinyObjReader: %s\n", reader.Error().c_str());
-		}
-		exit(1);
-	}
-
-	if (!reader.Warning().empty()) {
-		fprintf(stderr, "TinyObjReader: %s\n", reader.Warning().c_str());
-	}
-
-	printf("---------\n");
-	printf("model info:\n");
-	printf("  obj path: %s\n", objPath);
-	printf("  material count: %zu\n", reader.GetMaterials().size());
-	printf("  vertices: %zu\n", reader.GetAttrib().vertices.size() / 3);
-	printf("  normals: %zu\n", reader.GetAttrib().normals.size() / 3);
-	printf("  texcoords: %zu\n", reader.GetAttrib().texcoords.size() / 2);
-	printf("  texcoords ws: %zu\n", reader.GetAttrib().texcoord_ws.size() / 2);
-	printf("  shapes: %zu\n", reader.GetShapes().size());
-
-	auto & attrib = reader.GetAttrib();
-	auto & shapes = reader.GetShapes();
-	[[maybe_unused]] auto & materials = reader.GetMaterials();
-
-	auto vec2slice = [](auto & arr) -> srat::slice<u8 const> {
-		return srat::slice(arr.data(), arr.size()).template cast<u8 const>();
-	};
-
-	for (auto const & shape : shapes) {
-		SratModel::Mesh mesh{};
-
-		std::map<std::tuple<i32, i32, i32>, u32> seen;
-
-		for (tinyobj::index_t const & idx : shape.mesh.indices) {
-			std::tuple<int, i32, i32> const key = {
-				idx.vertex_index,
-				idx.normal_index,
-				idx.texcoord_index,
-			};
-			auto [it, inserted] = seen.emplace(key, (u32)mesh.positions.size());
-			if (inserted) {
-				i32 const vi = idx.vertex_index;
-				mesh.positions.push_back(f32v3 {
-					attrib.vertices[3*vi+0],
-					attrib.vertices[3*vi+1],
-					attrib.vertices[3*vi+2],
-				});
-				i32 const ni = idx.normal_index;
-				mesh.normals.push_back(
-					ni >= 0
-					? f32v3 {
-						attrib.normals[3*ni+0],
-						attrib.normals[3*ni+1],
-						attrib.normals[3*ni+2],
-					}
-					: f32v3 { 0.0f, 0.0f, 0.0f }
-				);
-				i32 const ti = idx.texcoord_index;
-				mesh.uvcoords.push_back(
-					ti >= 0
-					? f32v2 {
-						attrib.texcoords[2*ti+0],
-						// OBJ V=0 is bottom; flip to V=0 top
-						1.0f - attrib.texcoords[2*ti+1],
-					}
-					: f32v2 { 0.0f, 0.0f }
-				);
-			}
-			mesh.indices.push_back(it->second);
-		}
-
-		srat::slice<u8 const> const posSlice = vec2slice(mesh.positions);
-		srat::slice<u8 const> const nrmSlice = vec2slice(mesh.normals);
-		srat::slice<u8 const> const uvSlice  = vec2slice(mesh.uvcoords);
-
-		mesh.drawInfo = srat::gfx::DrawInfo {
-			.boundTexture = srat::gfx::Image { 0 },
-			.modelViewProjection = f32m44_identity(),
-			.vertexAttributes = {
-				.position = {
-					.byteStride = sizeof(f32v3),
-					.data = posSlice,
-				},
-				.normal = {
-					.byteStride = sizeof(f32v3),
-					.data = nrmSlice,
-				},
-				.uv = {
-					.byteStride = sizeof(f32v2),
-					.data = uvSlice,
-				},
-			},
-			.indices = (
-				vec2slice(mesh.indices).cast<u32 const>()
-			),
-			.indexCount = (u32)mesh.indices.size(),
-		};
-		model.meshes.emplace_back(std::move(mesh));
-	}
-
-	// -- calculate bounds
-	for (const auto & mesh : model.meshes) {
-		for (const auto & pos : mesh.positions) {
-			model.boundsMin = f32v3_min(model.boundsMin, pos);
-			model.boundsMax = f32v3_max(model.boundsMax, pos);
-		}
-	}
-
-	return model;
-}
-
 // this draws the scene a single time as a unit-test for debugging
 void draw_scene_unit_tests(
 	srat::gfx::Device const & device,
 	SratModel const & model,
-	srat::gfx::Image const & mtrlDefTex,
 	srat::gfx::Image const & target,
 	srat::gfx::Image const & depthTarget
 )
@@ -296,7 +153,7 @@ void draw_scene_unit_tests(
 	for (auto & mesh : model.meshes) {
 		srat::gfx::DrawInfo const & drawInfo = mesh.drawInfo;
 		srat::gfx::command_buffer_draw(cmdBuf, srat::gfx::DrawInfo {
-			.boundTexture = mtrlDefTex,
+			.boundTexture = drawInfo.boundTexture,
 			.modelViewProjection = modelViewProj,
 			.vertexAttributes = drawInfo.vertexAttributes,
 			.indices = drawInfo.indices,
@@ -312,7 +169,6 @@ void draw_scene_unit_tests(
 void draw_scene(
 	srat::gfx::Device const & device,
 	SratModel const & model,
-	srat::gfx::Image const & mtrlDefTex,
 	srat::gfx::Image const & target,
 	srat::gfx::Image const & depthTarget
 )
@@ -357,8 +213,8 @@ void draw_scene(
 	for (auto & mesh : model.meshes) {
 		srat::gfx::DrawInfo const & drawInfo = mesh.drawInfo;
 		srat::gfx::command_buffer_draw(cmdBuf, srat::gfx::DrawInfo {
-			.boundTexture = mtrlDefTex,
-			.modelViewProjection = modelViewProj,
+			.boundTexture = drawInfo.boundTexture,
+			.modelViewProjection = modelViewProj * drawInfo.modelViewProjection,
 			.vertexAttributes = drawInfo.vertexAttributes,
 			.indices = drawInfo.indices,
 			.indexCount = drawInfo.indexCount,
@@ -451,44 +307,6 @@ i32 main(i32 const argc, char const * const * argv)
 	Image const defaultImgRl = GenImageColor(kTargetDim.x, kTargetDim.y, BLACK);
 	Texture2D const deviceTexOut = LoadTextureFromImage(defaultImgRl);
 
-	auto const mtrlDefTex = []() -> srat::gfx::Image {
-		Image const img = LoadImage("assets/default.png");
-		SRAT_ASSERT(img.data);
-		SRAT_ASSERT(img.width > 0 && img.height > 0);
-		SRAT_ASSERT(
-			img.format == PIXELFORMAT_UNCOMPRESSED_R8G8B8A8
-			|| img.format == PIXELFORMAT_UNCOMPRESSED_R8G8B8
-		);
-		std::vector<u8> rgbaData((size_t)img.width * (size_t)img.height * 4);
-		if (img.format == PIXELFORMAT_UNCOMPRESSED_R8G8B8) {
-			// convert RGB to RGBA by adding an opaque alpha channel
-			for (int y = 0; y < img.height; ++y) {
-				for (int x = 0; x < img.width; ++x) {
-					size_t srcIndex = (y * img.width + x) * 3;
-					size_t dstIndex = (y * img.width + x) * 4;
-					rgbaData[dstIndex + 0] = ((u8 *)img.data)[srcIndex + 0]; // R
-					rgbaData[dstIndex + 1] = ((u8 *)img.data)[srcIndex + 1]; // G
-					rgbaData[dstIndex + 2] = ((u8 *)img.data)[srcIndex + 2]; // B
-					rgbaData[dstIndex + 3] = 255; // A (opaque)
-				}
-			}
-		} else {
-			// already RGBA, just copy
-			memcpy(rgbaData.data(), img.data, rgbaData.size());
-		}
-		auto result = srat::gfx::image_create(srat::gfx::ImageCreateInfo {
-			.dim = { img.width, img.height },
-			.layout = srat::gfx::ImageLayout::Linear,
-			.format = srat::gfx::ImageFormat::r8g8b8a8_unorm,
-			.optInitialData = srat::slice<u8 const>(
-				rgbaData.data(),
-				rgbaData.size()
-			)
-		});
-		UnloadImage(img);
-		return result;
-	}();
-
 	srat::gfx::Image const imageColor = (
 		srat::gfx::image_create(srat::gfx::ImageCreateInfo {
 			.dim = { kTargetDim.x, kTargetDim.y },
@@ -513,15 +331,11 @@ i32 main(i32 const argc, char const * const * argv)
 	});
 
 	// debug uses a cheap model
-#if SRAT_DEBUG()
-	SratModel model = loadModel("assets/cube.obj");
-#else
-	// SratModel model = loadModel("assets/blade.obj");
-	// SratModel model = loadModel("assets/sphere.obj");
-	// SratModel model = loadModel("assets/bunny.obj");
-	SratModel model = loadModel("assets/cube.obj");
-	// SratModel model = loadModel("assets/teapot.obj");
-#endif
+	SratModel model = (
+		load_gltf_model_from_file(
+			"assets/glTF-Sample-Assets/Models/DispersionTest/glTF/DispersionTest.gltf"
+		)
+	);
 
 	// -- generate two unit test images with reference and normal device
 	auto const imgUnitTestImageReference = (
@@ -568,14 +382,12 @@ i32 main(i32 const argc, char const * const * argv)
 		draw_scene_unit_tests(
 			deviceReference,
 			model,
-			mtrlDefTex,
 			unitTestImageReference,
 			unitTestImageReferenceDepth
 		);
 		draw_scene_unit_tests(
 			device,
 			model,
-			mtrlDefTex,
 			unitTestImageDevice,
 			unitTestImageDeviceDepth
 		);
@@ -632,9 +444,7 @@ i32 main(i32 const argc, char const * const * argv)
 		// -- here is the srat hookup
 		srat::Profiler::frame_begin();
 		if (sAppMode == AppMode::RunScene) {
-			draw_scene(
-				device, model, mtrlDefTex, imageColor, sratImageDepth
-			);
+			draw_scene(device, model, imageColor, sratImageDepth);
 		} else {
 			perf_suite_run(
 				static_cast<PerfSuiteMode>(sAppMode),
@@ -703,9 +513,10 @@ i32 main(i32 const argc, char const * const * argv)
 			// -- mode selection
 			{
 				i32 current = (i32)sAppMode;
+				ImGui::Text("mode");
 				if (
 					ImGui::Combo(
-						"mode",
+						"##mode",
 						&current,
 						kAppModeLabels,
 						(i32)AppMode::Count
@@ -788,7 +599,17 @@ i32 main(i32 const argc, char const * const * argv)
 					0.0f, 2.0f * std::numbers::pi_v<float>, "%.2f rad"
 				);
 				ImGui::SliderFloat("Orbit Speed",   &sCam.orbitSpeed,   0.0f, 5.0f,  "%.2f");
-				ImGui::SliderFloat("Radius Mult",   &sCam.radiusMult,   0.5f, 10.0f, "%.2f");
+				// reverse 1.0 scale to 10.0 and 10.0 to 1.0
+				static f32 radiusInverse = sCam.radiusMult;
+				ImGui::SliderFloat(
+					"Radius Mult",
+					&radiusInverse,
+					0.1f, 2.0f,
+					"%.2f"
+				);
+				sCam.radiusMult = 2.0f - radiusInverse;
+				// static multInverse = 1.0f / sCam.radiusMult;
+				// // ImGui::SliderFloat("Radius Mult",   &sCam.radiusMult,   0.5f, 10.0f, "%.2f");
 				ImGui::SliderFloat("Height Offset", &sCam.heightOffset, -2.0f, 2.0f, "%.2f");
 				ImGui::DragFloat("Pan X", &sCam.panX, 0.01f, -50.0f, 50.0f, "%.2f");
 				ImGui::DragFloat("Pan Y", &sCam.panY, 0.01f, -50.0f, 50.0f, "%.2f");
