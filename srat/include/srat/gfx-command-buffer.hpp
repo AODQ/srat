@@ -7,6 +7,7 @@
 #include <srat/core-types.hpp>
 #include <srat/gfx-device.hpp>
 #include <srat/gfx-image.hpp>
+#include <srat/gfx-material.hpp>
 #include <srat/profiler.hpp>
 
 namespace srat::gfx {
@@ -23,11 +24,14 @@ namespace srat::gfx {
 	};
 
 	struct DrawInfo {
-		srat::gfx::Image boundTexture;
+		// -- sort of old data, needs to be converted to some vertex pipeline
 		f32m44 modelViewProjection {};
 		VertexAttributes vertexAttributes {};
 		srat::slice<u32 const> indices {};
 		u32 indexCount { 0u };
+
+		// -- fragment pipeline data
+		srat::gfx::MaterialHandle boundMaterial {};
 	};
 
 	struct CommandBuffer { u64 id; };

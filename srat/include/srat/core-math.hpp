@@ -498,7 +498,53 @@ inline f32v2x8 f32v2x8_splat(f32 const x, f32 const y) {
 // -- f32x8x3
 // -----------------------------------------------------------------------------
 
-struct f32v3x8 { srat::array<f32x8, 3> v; };
+struct f32v3x8 {
+	srat::array<f32x8, 3> v;
+
+	f32v3x8() = default;
+	f32v3x8(f32x8 const & x, f32x8 const & y, f32x8 const & z) : v{ x, y, z }
+	{
+	}
+
+	f32v3x8 operator+(f32v3x8 const & o) const {
+		return {
+			v[0] + o.v[0],
+			v[1] + o.v[1],
+			v[2] + o.v[2],
+		};
+	}
+
+	f32v3x8 operator-(f32v3x8 const & o) const {
+		return {
+			v[0] - o.v[0],
+			v[1] - o.v[1],
+			v[2] - o.v[2],
+		};
+	}
+
+	f32v3x8 operator*(f32v3x8 const & o) const {
+		return {
+			v[0] * o.v[0],
+			v[1] * o.v[1],
+			v[2] * o.v[2],
+		};
+	}
+	f32v3x8 operator*(f32x8 const & s) const {
+		return {
+			v[0] * s,
+			v[1] * s,
+			v[2] * s,
+		};
+	}
+
+	f32v3x8 operator/(f32v3x8 const & o) const {
+		return {
+			v[0] / o.v[0],
+			v[1] / o.v[1],
+			v[2] / o.v[2],
+		};
+	}
+};
 
 // -----------------------------------------------------------------------------
 // -- f32v4x8
@@ -517,6 +563,15 @@ struct f32v4x8 {
 	f32v4x8(f32x8 const & x, f32x8 const & y, f32x8 const & z, f32x8 const & w)
 		: v{ x, y, z, w }
 	{
+	}
+
+	f32v4x8(f32v3x8 const & v3, f32x8 const & w)
+		: v{ v3.v[0], v3.v[1], v3.v[2], w }
+	{
+	}
+
+	[[nodiscard]] inline f32v3x8 xyz() const {
+		return { v[0], v[1], v[2] };
 	}
 
 	f32v4x8 operator+(f32v4x8 const & o) const {
@@ -576,6 +631,30 @@ inline void f32v4x8_store(f32v4x8 const & v, srat::slice<f32, 32> const & out) {
 	f32x8_store(v.v[3], out.subslice(24).as<8>());
 }
 
+inline f32v3x8 f32v3x8_splat(srat::slice<f32, 3> in) {
+	return {
+		f32x8_splat(in[0]),
+		f32x8_splat(in[1]),
+		f32x8_splat(in[2]),
+	};
+}
+
+inline f32v3x8 f32v3x8_splat(f32 const x, f32 const y, f32 const z) {
+	return {
+		f32x8_splat(x),
+		f32x8_splat(y),
+		f32x8_splat(z),
+	};
+}
+
+inline f32v3x8 f32v3x8_splat(f32v3 const & v) {
+	return {
+		f32x8_splat(v.x),
+		f32x8_splat(v.y),
+		f32x8_splat(v.z),
+	};
+}
+
 inline f32v4x8 f32v4x8_splat(srat::slice<f32, 4> in) {
 	return {
 		f32x8_splat(in[0]),
@@ -605,9 +684,23 @@ inline f32v4x8 f32v4x8_splat(
 	};
 }
 
+inline f32v3x8 f32v3x8_zero() {
+	static srat::array<f32, 3> zero = { 0.0f, 0.0f, 0.0f, };
+	return f32v3x8_splat(zero);
+}
+
 inline f32v4x8 f32v4x8_zero() {
 	static srat::array<f32, 4> zero = { 0.0f, 0.0f, 0.0f, 0.0f };
 	return f32v4x8_splat(zero);
+}
+
+inline f32x8 f32v3x8_dot(f32v3x8 const & a, f32v3x8 const & b) {
+	return {
+		f32x8_fmadd(
+			a.v[0], b.v[0],
+			f32x8_fmadd(a.v[1], b.v[1], (a.v[2] * b.v[2]))
+		)
+	};
 }
 
 inline f32x8 f32v4x8_dot(f32v4x8 const & a, f32v4x8 const & b) {

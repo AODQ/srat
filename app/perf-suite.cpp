@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <srat/gfx-command-buffer.hpp>
 #include <srat/gfx-image.hpp>
+#include <srat/material-fragment-unlit.hpp>
 #include <srat/profiler.hpp>
 #include <srat/rasterizer-phase-bin.hpp>
 #include <srat/rasterizer-phase-rasterize.hpp>
@@ -85,6 +86,12 @@ void ensure_workload(i32v2 const dim)
 	}
 }
 
+srat::gfx::MaterialHandle & material_handle()
+{
+	static srat::gfx::MaterialHandle handle { 0 };
+	return handle;
+}
+
 } // anonymous namespace
 
 // -----------------------------------------------------------------------------
@@ -137,7 +144,6 @@ void run_perf_vertex(PerfSuiteConfig const & config)
 	};
 
 	srat::gfx::DrawInfo const drawInfo {
-		.boundTexture = srat::gfx::Image { 0 }, // not used in shader
 		.modelViewProjection = f32m44_identity(),
 		.vertexAttributes = {
 			.position = {
@@ -155,6 +161,7 @@ void run_perf_vertex(PerfSuiteConfig const & config)
 		},
 		.indices = srat::slice(rawIndices.data(), rawIndices.size()),
 		.indexCount = vertCount,
+		.boundMaterial = srat::gfx::MaterialHandle { 0 }, // not used in shader
 	};
 
 	{
@@ -244,13 +251,13 @@ void run_perf_raster(PerfSuiteConfig const & config)
 
 	{
 		SRAT_PROFILE_SCOPE("raster");
-		srat::rasterizer_phase_rasterization(
+		srat::rasterizer_phase_rasterization<srat::MaterialFragmentUnlit>(
 			srat::RasterizerPhaseRasterizationParams {
 				.tileGrid = tileGrid,
 				.viewport = viewport,
 				.targetColor = config.targetColor,
 				.targetDepth = config.targetDepth,
-				.boundTexture = srat::gfx::Image { 0 }, // not used in shader
+				.boundMaterial = material_handle(),
 			}
 		);
 	}
@@ -466,13 +473,13 @@ PerfResult test_model_raster(
 	};
 
 	PerfResult res = time_test("model-raster", kStartupIterations, [&]() {
-		srat::rasterizer_phase_rasterization(
+		srat::rasterizer_phase_rasterization<srat::MaterialFragmentUnlit>(
 			srat::RasterizerPhaseRasterizationParams {
 				.tileGrid    = tg,
 				.viewport    = vp,
 				.targetColor = cfg.targetColor,
 				.targetDepth = cfg.targetDepth,
-				.boundTexture = srat::gfx::Image { 0 }, // not used in shader
+				.boundMaterial = material_handle(),
 			}
 		);
 	});
@@ -510,13 +517,13 @@ PerfResult test_fullscreen_triangle_raster(PerfSuiteStartupConfig const & cfg)
 
 	PerfResult res = time_test(
 		"fullscreen-triangle-raster", kStartupIterations, [&]() {
-			srat::rasterizer_phase_rasterization(
+			srat::rasterizer_phase_rasterization<srat::MaterialFragmentUnlit>(
 				srat::RasterizerPhaseRasterizationParams {
 					.tileGrid    = tg,
 					.viewport    = vp,
 					.targetColor = cfg.targetColor,
 					.targetDepth = cfg.targetDepth,
-					.boundTexture = srat::gfx::Image { 0 }, // not used in shader
+					.boundMaterial = material_handle(),
 				}
 			);
 		}
@@ -589,13 +596,13 @@ PerfResult test_many_tris_raster(PerfSuiteStartupConfig const & cfg)
 
 	PerfResult res = time_test(
 		"many-tris-per-bin-raster", kStartupIterations, [&]() {
-			srat::rasterizer_phase_rasterization(
+			srat::rasterizer_phase_rasterization<srat::MaterialFragmentUnlit>(
 				srat::RasterizerPhaseRasterizationParams {
 					.tileGrid    = tg,
 					.viewport    = vp,
 					.targetColor = cfg.targetColor,
 					.targetDepth = cfg.targetDepth,
-					.boundTexture = srat::gfx::Image { 0 }, // not used in shader
+					.boundMaterial = material_handle(),
 				}
 			);
 		}
@@ -646,7 +653,6 @@ PerfResult test_worstcase_vertex(PerfSuiteStartupConfig const & cfg)
 	};
 
 	srat::gfx::DrawInfo const drawInfo {
-		.boundTexture = srat::gfx::Image { 0 }, // not used in shader
 		.modelViewProjection = f32m44_identity(),
 		.vertexAttributes = {
 			.position = { sizeof(f32v3), vec2slice(rawPositions) },
@@ -655,6 +661,7 @@ PerfResult test_worstcase_vertex(PerfSuiteStartupConfig const & cfg)
 		},
 		.indices    = srat::slice(rawIndices.data(), rawIndices.size()),
 		.indexCount = vertCount,
+		.boundMaterial = material_handle(),
 	};
 
 	return time_test("worstcase-vertex", kStartupIterations, [&]() {
@@ -700,13 +707,13 @@ PerfResult test_worstcase_raster(PerfSuiteStartupConfig const & cfg)
 	};
 
 	PerfResult res = time_test("worstcase-raster", kStartupIterations, [&]() {
-		srat::rasterizer_phase_rasterization(
+		srat::rasterizer_phase_rasterization<srat::MaterialFragmentUnlit>(
 			srat::RasterizerPhaseRasterizationParams {
 				.tileGrid    = tg,
 				.viewport    = vp,
 				.targetColor = cfg.targetColor,
 				.targetDepth = cfg.targetDepth,
-				.boundTexture = srat::gfx::Image { 0 }, // not used in shader
+				.boundMaterial = material_handle(),
 			}
 		);
 	});
@@ -800,6 +807,14 @@ void perf_suite_run_startup(PerfSuiteStartupConfig const & cfg)
 	bool const hasModel = cfg.modelMeshes && !cfg.modelMeshes->empty();
 	results.reserve(hasModel ? 9u : 6u);
 
+	// -- create material
+	material_handle() = (
+		srat::gfx::material_create(srat::gfx::MaterialParameterBlockUnlit {
+			.albedoTexture = srat::gfx::Image { 0 }, // not used in shader
+			.albedoColor = f32v4x8_splat(1.f, 1.0f, 1.0f, 1.0f),
+		})
+	);
+
 	// -- tests 1-3: model phases (only when model meshes are provided)
 	if (hasModel) {
 		auto const & meshes = *cfg.modelMeshes;
@@ -821,4 +836,6 @@ void perf_suite_run_startup(PerfSuiteStartupConfig const & cfg)
 	results.push_back(test_worstcase_raster(cfg));
 
 	write_perf_log(make_log_filename(), results);
+
+	srat::gfx::material_destroy(material_handle());
 }

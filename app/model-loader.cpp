@@ -102,15 +102,42 @@ SratModel load_gltf_model_from_file(char const * const filepath)
 	);
 
 	// -- load up images
+
+	auto const & loadImageFromBuffer =
+		[&](cgltf_image const & img) -> Image
+	{
+		char const * mime = ".png";
+		if (strcmp(img.mime_type, "image/png") == 0) {
+			mime = ".png";
+		} else if (strcmp(img.mime_type, "image/jpeg") == 0) {
+			mime = ".jpg";
+		}
+		printf("loading image from buffer, mime type: %s\n", mime);
+
+		return LoadImageFromMemory(
+			mime,
+			(
+				reinterpret_cast<u8 const *>(img.buffer_view->buffer->data)
+				+ img.buffer_view->offset
+			),
+			(i32)img.buffer_view->size
+		);
+	};
+
 	auto const & loadImage = [&](cgltf_image const & img) -> srat::gfx::Image {
+		Image raylibImage {};
 		if (img.uri == nullptr) {
-			fprintf(stderr, "Image is missing URI, skipping\n");
-			return srat::gfx::Image {}; // return empty image
+			if (img.buffer_view == nullptr) {
+				fprintf(stderr, "Image has no uri or buffer view, skipping\n");
+				return srat::gfx::Image {}; // return empty image
+			}
+			raylibImage = loadImageFromBuffer(img);
+		} else {
+			std::string const imgPath = combinePath(img.uri);
+			printf("loading image: %s\n", imgPath.c_str());
+			raylibImage = LoadImage(imgPath.c_str());
 		}
 		// -- load image using raylib, and convert to srat image
-		std::string const imgPath = combinePath(img.uri);
-		printf("loading image: %s\n", imgPath.c_str());
-		Image raylibImage = LoadImage(imgPath.c_str());
 		std::vector<u8> rgbaData(raylibImage.width * raylibImage.height * 4);
 		// format all images into linear rgba
 		ImageFormat(&raylibImage, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
@@ -242,21 +269,81 @@ SratModel load_gltf_model_from_file(char const * const filepath)
 				}
 
 				// -- load up material and texture (if any)
-				srat::gfx::Image boundTexture { 0 };
+				srat::gfx::MaterialHandle matHandle { 0 };
 				if (prim.material) {
 					cgltf_material const & mat = *prim.material;
-					auto & baseColorTex = (
-						prim.material->pbr_metallic_roughness.base_color_texture
-					);
-					printf("base color texture: %s\n", baseColorTex.texture ? "yes" : "no");
-					if (baseColorTex.texture) {
-						boundTexture = loadImage(*baseColorTex.texture->image);
+					if (mat.has_pbr_metallic_roughness) {
+						srat::gfx::MaterialParameterBlockPbrMetallicRoughness
+							matParams {};
+						auto & pbrMR = mat.pbr_metallic_roughness;
+						auto & baseColorTex = pbrMR.base_color_texture;
+						auto & metallicRoughnessTex = (
+							pbrMR.metallic_roughness_texture
+						);
+						matParams.albedoTexture = (
+							  baseColorTex.texture
+							? loadImage(*baseColorTex.texture->image)
+							: srat::gfx::Image { 0 }
+						);
+						printf("albedo texture\n");
+
+						matParams.metallicRoughnessTexture = (
+							  metallicRoughnessTex.texture
+							? loadImage(*metallicRoughnessTex.texture->image)
+							: srat::gfx::Image { 0 }
+						);
+						printf("metalic roughness texture %zu\n",
+							matParams.metallicRoughnessTexture.id);
+
+						matParams.albedoColor = (
+							f32v4x8_splat(
+								pbrMR.base_color_factor[0],
+								pbrMR.base_color_factor[1],
+								pbrMR.base_color_factor[2],
+								pbrMR.base_color_factor[3]
+							)
+						);
+						printf("albedo color: (%f, %f, %f, %f)\n",
+							pbrMR.base_color_factor[0],
+							pbrMR.base_color_factor[1],
+							pbrMR.base_color_factor[2],
+							pbrMR.base_color_factor[3]
+						);
+
+						matParams.metallicFactor = (
+							f32x8_splat(pbrMR.metallic_factor)
+						);
+						printf("metallic factor: %f\n", pbrMR.metallic_factor);
+
+						matParams.roughnessFactor = (
+							f32x8_splat(pbrMR.roughness_factor)
+						);
+						printf("roughness factor: %f\n", pbrMR.roughness_factor);
+
+						
+						matParams.normalTexture = (
+							  mat.normal_texture.texture
+							? loadImage(*mat.normal_texture.texture->image)
+							: srat::gfx::Image { 0 }
+						);
+						printf("normal texture %zu\n", matParams.normalTexture.id);
+
+						matHandle = srat::gfx::material_create(matParams);
+					} else if (mat.unlit) {
+						srat::gfx::MaterialParameterBlockUnlit matParams {};
+						matParams.albedoTexture = srat::gfx::Image { 0 };
+						matParams.albedoColor = f32v4x8_splat(1.f, 1.f, 1.f, 1.f);
+						matHandle = srat::gfx::material_create(matParams);
+					} else {
+						fprintf(stderr, "Unsupported material type, skipping\n");
+						matHandle = srat::gfx::MaterialHandle { 0 };
 					}
 				}
 
+				srat::gfx::material_destroy_defer(matHandle);
+
 				// -- build DrawInfo, baking node transform
 				mesh.drawInfo = srat::gfx::DrawInfo {
-					.boundTexture = boundTexture,
 					.modelViewProjection = worldTransform,
 					.vertexAttributes = {
 						.position = {
@@ -276,6 +363,7 @@ SratModel load_gltf_model_from_file(char const * const filepath)
 						vec2slice(mesh.indices).cast<u32 const>()
 					),
 					.indexCount = (u32)mesh.indices.size(),
+					.boundMaterial = matHandle,
 				};
 
 				model.meshes.emplace_back(std::move(mesh));

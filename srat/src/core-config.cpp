@@ -28,8 +28,3 @@ bool & srat_vertex_parallel() {
 	static bool parallel = true;
 	return parallel;
 }
-
-ShaderMode & srat_shader_mode() {
-	static ShaderMode mode = ShaderMode::DisplayColor;
-	return mode;
-}

@@ -114,12 +114,11 @@ add_library(
 	srat/src/gfx-command-buffer.cpp
 	srat/src/gfx-device.cpp
 	srat/src/gfx-image.cpp
-	srat/src/internal-gfx-device.hpp
+	srat/src/internal/gfx-material-impl.cpp
 	srat/src/rasterizer-phase-bin.cpp
 	srat/src/rasterizer-phase-rasterize.cpp
 	srat/src/rasterizer-phase-vertex.cpp
 	srat/src/rasterizer-tile-grid.cpp
-	srat/src/rasterizer-reference.cpp
 )
 set_target_properties(
 	srat
@@ -157,7 +156,7 @@ target_compile_definitions(
 	srat
 	INTERFACE
 	$<$<CONFIG:RelWithDebInfo>:SRAT_DEBUG_IMPL=0>
-	$<$<CONFIG:Release>:SRAT_DEBUG_IMPL=0>
+	$<$<CONFIG:Release>:SRAT_DEBUG_IMPL=1>
 	$<$<CONFIG:Debug>:SRAT_DEBUG_IMPL=1>
 )
 target_link_options(
@@ -184,6 +183,7 @@ target_sources(
 	app
 	PRIVATE
 	app/source.cpp
+	app/batch-render.cpp
 	app/perf-suite.cpp
 	app/model-loader.cpp
 	app/unit-test-alloc-arena.cpp

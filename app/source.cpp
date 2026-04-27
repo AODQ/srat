@@ -1,10 +1,12 @@
 #include "gui.hpp"
+#include "batch-render.hpp"
 #include "perf-suite.hpp"
 #include "model-loader.hpp"
 
 #include <srat/alloc-virtual-range.hpp>
 #include <srat/core-types.hpp>
 #include <srat/gfx-command-buffer.hpp>
+#include <srat/gfx-material.hpp>
 #include <srat/gfx-image.hpp>
 #include <srat/profiler.hpp>
 
@@ -17,7 +19,7 @@
 #include <numbers>
 
 static constexpr i32v2 kWindowDim = { 1920, 1080 };
-static constexpr i32v2 kTargetDim = { 128, 128 };
+static constexpr i32v2 kTargetDim = { 1024, 1024 };
 static bool animationEnabled = true;
 
 // -----------------------------------------------------------------------------
@@ -105,66 +107,6 @@ f32m44 compute_orbit_view(SratModel const & model, CameraState const & cam)
 	return f32m44_lookat(eye, target, up);
 }
 
-// this draws the scene a single time as a unit-test for debugging
-void draw_scene_unit_tests(
-	srat::gfx::Device const & device,
-	SratModel const & model,
-	srat::gfx::Image const & target,
-	srat::gfx::Image const & depthTarget
-)
-{
-	// -- clear image
-	srat::slice<u8> imagePtr = srat::gfx::image_data8(target);
-	for (u64 i = 0; i < (u64)kTargetDim.x * (u64)kTargetDim.y; ++i) {
-		imagePtr[i*4 + 0] = 128; // r
-		imagePtr[i*4 + 1] = 0; // g
-		imagePtr[i*4 + 2] = 0; // b
-		imagePtr[i*4 + 3] = 255; // a
-	}
-
-	// -- clear depth
-	Let depthPtr = srat::slice<u16> {srat::gfx::image_data16(depthTarget)};
-	for (u64 i = 0; i < (u64)kTargetDim.x * (u64)kTargetDim.y; ++i) {
-		depthPtr[i] = UINT16_MAX; // max depth
-	}
-
-	// -- build modelviewproj
-	f32m44 const proj = f32m44_perspective(
-		sCam.fovDeg * (std::numbers::pi_v<float> / 180.f),
-		/*aspect=*/ 1.0f,
-		0.1f,
-		1'000.0f
-	);
-	// rotate around the center of the model, and move back so it's visible
-	f32m44 const view = compute_orbit_view(model, sCam);
-	f32m44 const modelViewProj = proj * view;
-	// -- record command buffer
-	srat::gfx::CommandBuffer cmdBuf = srat::gfx::command_buffer_create();
-	srat::gfx::command_buffer_bind_framebuffer(
-		cmdBuf,
-		srat::gfx::Viewport {
-			.offset = { 0, 0 },
-			.dim = { kTargetDim.x, kTargetDim.y },
-		},
-		target,
-		depthTarget
-	);
-
-	for (auto & mesh : model.meshes) {
-		srat::gfx::DrawInfo const & drawInfo = mesh.drawInfo;
-		srat::gfx::command_buffer_draw(cmdBuf, srat::gfx::DrawInfo {
-			.boundTexture = drawInfo.boundTexture,
-			.modelViewProjection = modelViewProj,
-			.vertexAttributes = drawInfo.vertexAttributes,
-			.indices = drawInfo.indices,
-			.indexCount = drawInfo.indexCount,
-		});
-	}
-
-	srat::gfx::command_buffer_submit(device, cmdBuf);
-	srat::gfx::command_buffer_destroy(cmdBuf);
-}
-
 // just a placeholder function
 void draw_scene(
 	srat::gfx::Device const & device,
@@ -213,11 +155,11 @@ void draw_scene(
 	for (auto & mesh : model.meshes) {
 		srat::gfx::DrawInfo const & drawInfo = mesh.drawInfo;
 		srat::gfx::command_buffer_draw(cmdBuf, srat::gfx::DrawInfo {
-			.boundTexture = drawInfo.boundTexture,
 			.modelViewProjection = modelViewProj * drawInfo.modelViewProjection,
 			.vertexAttributes = drawInfo.vertexAttributes,
 			.indices = drawInfo.indices,
 			.indexCount = drawInfo.indexCount,
+			.boundMaterial = drawInfo.boundMaterial
 		});
 	}
 
@@ -300,6 +242,13 @@ void gui_profiler() {
 
 i32 main(i32 const argc, char const * const * argv)
 {
+	if (argc == 2 && std::strcmp(argv[1], "--batch-render") == 0) {
+		batch_render_all_models(
+			"assets/glTF-Sample-Assets/Models",
+			"image-output"
+		);
+		return 0;
+	}
 	unit_tests(argc, argv);
 
 	raylib_init();
@@ -323,113 +272,31 @@ i32 main(i32 const argc, char const * const * argv)
 		})
 	);
 
-	srat::gfx::Device const deviceReference = srat::gfx::device_create({
-		.referenceMode = true,
-	});
-	srat::gfx::Device const device = srat::gfx::device_create({
-		.referenceMode = false,
-	});
+	srat::gfx::Device const device = srat::gfx::device_create({});
 
 	// debug uses a cheap model
 	SratModel model = (
 		load_gltf_model_from_file(
-			"assets/glTF-Sample-Assets/Models/DispersionTest/glTF/DispersionTest.gltf"
+			// "assets/third-party/doom3player.glb"
+			"assets/glTF-Sample-Assets/Models/WaterBottle/glTF/WaterBottle.gltf"
 		)
 	);
 
-	// -- generate two unit test images with reference and normal device
-	auto const imgUnitTestImageReference = (
-		GenImageColor(kTargetDim.x, kTargetDim.y, BLACK)
-	);
-	auto const imgUnitTestImageReferenceDepth = (
-		GenImageColor(kTargetDim.x, kTargetDim.y, BLACK)
-	);
-	auto const imgUnitTestImageDevice = (
-		GenImageColor(kTargetDim.x, kTargetDim.y, BLACK)
-	);
-	auto const imgUnitTestImageDeviceDepth = (
-		GenImageColor(kTargetDim.x, kTargetDim.y, BLACK)
-	);
-	{
-		srat::gfx::Image const unitTestImageReference = (
-			srat::gfx::image_create(srat::gfx::ImageCreateInfo {
-				.dim = { kTargetDim.x, kTargetDim.y },
-				.layout = srat::gfx::ImageLayout::Linear,
-				.format = srat::gfx::ImageFormat::r8g8b8a8_unorm,
-			})
-		);
-		srat::gfx::Image const unitTestImageReferenceDepth = (
-			srat::gfx::image_create(srat::gfx::ImageCreateInfo {
-				.dim = { kTargetDim.x, kTargetDim.y },
-				.layout = srat::gfx::ImageLayout::Linear,
-				.format = srat::gfx::ImageFormat::depth16_unorm,
-			})
-		);
-		srat::gfx::Image const unitTestImageDevice = (
-			srat::gfx::image_create(srat::gfx::ImageCreateInfo {
-				.dim = { kTargetDim.x, kTargetDim.y },
-				.layout = srat::gfx::ImageLayout::Linear,
-				.format = srat::gfx::ImageFormat::r8g8b8a8_unorm,
-			})
-		);
-		srat::gfx::Image const unitTestImageDeviceDepth = (
-			srat::gfx::image_create(srat::gfx::ImageCreateInfo {
-				.dim = { kTargetDim.x, kTargetDim.y },
-				.layout = srat::gfx::ImageLayout::Linear,
-				.format = srat::gfx::ImageFormat::depth16_unorm,
-			})
-		);
-		draw_scene_unit_tests(
-			deviceReference,
-			model,
-			unitTestImageReference,
-			unitTestImageReferenceDepth
-		);
-		draw_scene_unit_tests(
-			device,
-			model,
-			unitTestImageDevice,
-			unitTestImageDeviceDepth
-		);
-		memcpy(
-			imgUnitTestImageReference.data,
-			srat::gfx::image_data8(unitTestImageReference).ptr(),
-			(size_t)kTargetDim.x * (size_t)kTargetDim.y * 4
-		);
-		depth_image_to_grayscale_texture(
-			unitTestImageReferenceDepth,
-			imgUnitTestImageReferenceDepth
-		);
-		memcpy(
-			imgUnitTestImageDevice.data,
-			srat::gfx::image_data8(unitTestImageDevice).ptr(),
-			(size_t)kTargetDim.x * (size_t)kTargetDim.y * 4
-		);
-		depth_image_to_grayscale_texture(
-			unitTestImageDeviceDepth,
-			imgUnitTestImageDeviceDepth
-		);
-		srat::gfx::image_destroy(unitTestImageReference);
-		srat::gfx::image_destroy(unitTestImageReferenceDepth);
-		srat::gfx::image_destroy(unitTestImageDevice);
-		srat::gfx::image_destroy(unitTestImageDeviceDepth);
-	}
-
-	// -- one-shot performance suite
-	{
-		std::vector<srat::gfx::DrawInfo> modelMeshDrawInfos;
-		modelMeshDrawInfos.reserve(model.meshes.size());
-		for (auto const & mesh : model.meshes) {
-			modelMeshDrawInfos.push_back(mesh.drawInfo);
-		}
-		perf_suite_run_startup(PerfSuiteStartupConfig {
-			.device      = device,
-			.targetColor = imageColor,
-			.targetDepth = sratImageDepth,
-			.targetDim   = kTargetDim,
-			.modelMeshes = &modelMeshDrawInfos,
-		});
-	}
+	// // -- one-shot performance suite
+	// {
+	// 	std::vector<srat::gfx::DrawInfo> modelMeshDrawInfos;
+	// 	modelMeshDrawInfos.reserve(model.meshes.size());
+	// 	for (auto const & mesh : model.meshes) {
+	// 		modelMeshDrawInfos.push_back(mesh.drawInfo);
+	// 	}
+	// 	perf_suite_run_startup(PerfSuiteStartupConfig {
+	// 		.device      = device,
+	// 		.targetColor = imageColor,
+	// 		.targetDepth = sratImageDepth,
+	// 		.targetDim   = kTargetDim,
+	// 		.modelMeshes = &modelMeshDrawInfos,
+	// 	});
+	// }
 
 	while (!WindowShouldClose())
 	{
@@ -446,20 +313,17 @@ i32 main(i32 const argc, char const * const * argv)
 		if (sAppMode == AppMode::RunScene) {
 			draw_scene(device, model, imageColor, sratImageDepth);
 		} else {
-			perf_suite_run(
-				static_cast<PerfSuiteMode>(sAppMode),
-				PerfSuiteConfig {
-					.device = device,
-					.targetColor = imageColor,
-					.targetDepth = sratImageDepth,
-					.targetDim = kTargetDim,
-				}
-			);
+			// perf_suite_run(
+			// 	static_cast<PerfSuiteMode>(sAppMode),
+			// 	PerfSuiteConfig {
+			// 		.device = device,
+			// 		.targetColor = imageColor,
+			// 		.targetDepth = sratImageDepth,
+			// 		.targetDim = kTargetDim,
+			// 	}
+			// );
 		}
 		srat::Profiler::frame_end(GetFrameTime() * 1000.0);
-
-		// lastly copy srat data into raylib texture
-		UpdateTexture(deviceTexOut, srat::gfx::image_data8(imageColor).ptr());
 
 		static srat::array<float, 16> timings {};
 		static float timeSinceLastUpdate = 0.f;
@@ -487,22 +351,9 @@ i32 main(i32 const argc, char const * const * argv)
 
 		// viewport
 		{
-			ImGui::Begin("viewport");
-			ImGui::Image(
-			 	ImTextureID(deviceTexOut.id),
-				ImVec2(float(deviceTexOut.width)*2, float(deviceTexOut.height)*2)
-			);
-			ImGui::End();
-		}
+			UpdateTexture(deviceTexOut, srat::gfx::image_data8(imageColor).ptr());
 
-		{
-			// convert srat images to raylib images
-			guiUnitTestImages(
-				imgUnitTestImageReference,
-				imgUnitTestImageReferenceDepth,
-				imgUnitTestImageDevice,
-				imgUnitTestImageDeviceDepth
-			);
+			guiDisplayImage(deviceTexOut, "render output");
 		}
 
 		// runtime settings
@@ -528,6 +379,10 @@ i32 main(i32 const argc, char const * const * argv)
 			ImGui::Separator();
 
 			ImGui::Text("average frame time: %.2f ms", timeSinceLastUpdateTime);
+			ImGui::Text(
+				"    (%.1f fps)",
+				timeSinceLastUpdateTime > 0.f ? 1000.f/timeSinceLastUpdateTime:0.f
+			);
 
 			ImGui::PlotHistogram(
 				"frame time history",
@@ -553,26 +408,6 @@ i32 main(i32 const argc, char const * const * argv)
 			ImGui::Checkbox("rasterize parallel", &srat_rasterize_parallel());
 			ImGui::Checkbox("vertex parallel", &srat_vertex_parallel());
 			
-			// shader mode
-			// NOLINTBEGIN(*)
-			{
-				const char * shaderModeLabels[] = {
-					"Display UV",
-					"Display Depth",
-					"Display Color",
-				};
-				int shaderModeInt = (int)srat_shader_mode();
-				if (
-					ImGui::Combo(
-						"shader mode",
-						&shaderModeInt,
-						shaderModeLabels,
-						IM_ARRAYSIZE(shaderModeLabels)
-					)
-				) {
-					srat_shader_mode() = (ShaderMode)shaderModeInt;
-				}
-			}
 			// NOLINTEND(*)
 			// configure tile size, must be at least 16 and a multiple of 8
 			static int tileSize = (int)srat_tile_size() / 8;
@@ -630,16 +465,11 @@ i32 main(i32 const argc, char const * const * argv)
 	}
 
 	srat::gfx::device_destroy(device);
-	srat::gfx::device_destroy(deviceReference);
 	srat::gfx::image_destroy(imageColor);
 	srat::gfx::image_destroy(sratImageDepth);
 
 	// raylib destroy
 	UnloadImage(defaultImgRl);
-	UnloadImage(imgUnitTestImageReference);
-	UnloadImage(imgUnitTestImageReferenceDepth);
-	UnloadImage(imgUnitTestImageDevice);
-	UnloadImage(imgUnitTestImageDeviceDepth);
 	UnloadTexture(deviceTexOut);
 	rlImGuiShutdown();
 	raylib_shutdown();

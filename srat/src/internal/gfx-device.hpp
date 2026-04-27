@@ -11,5 +11,4 @@ namespace srat::gfx {
 		srat::gfx::Device const & device,
 		srat::gfx::Viewport const & viewport
 	);
-	bool device_reference_mode(Device const & device);
 }

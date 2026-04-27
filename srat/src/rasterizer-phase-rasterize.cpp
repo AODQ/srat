@@ -1,6 +1,10 @@
 #include <srat/rasterizer-phase-rasterize.hpp>
 
+#include "internal/gfx-material-impl.hpp"
+
 #include <srat/gfx-image.hpp>
+#include <srat/gfx-material.hpp>
+#include <srat/material-core.hpp>
 #include <srat/rasterizer-interpolant.hpp>
 #include <srat/rasterizer-tile-grid.hpp>
 
@@ -117,10 +121,11 @@ namespace {
 		i32v2 targetDim;
 		srat::slice<u32> const & imageData;
 		srat::slice<u16> const & depthData;
-		srat::gfx::Image const & boundTexture;
+		srat::gfx::MaterialHandle boundMaterial;
 	};
 }
 
+template <typename FusedShaderFragment>
 static void rasterize_triangle(
 	RasterizeTriangleParams const & ci
 ) {
@@ -146,6 +151,17 @@ static void rasterize_triangle(
 	alignas(32) srat::array<f32, 8> depth16Lanes;
 	alignas(32) srat::array<u32, 8> maskLanes;
 // NOLINTEND(cppcoreguidelines-pro-type-member-init)
+
+	// -- get the material info
+	void const * const materialData = (
+		srat::gfx::impl_material_parameter_block_from_handle(ci.boundMaterial)
+	);
+	// assert that the material type matches the expected fragment shader
+	SRAT_ASSERT(
+		   srat::gfx::impl_material_from_handle(ci.boundMaterial).type
+		== FusedShaderFragment::material_type()
+	);
+	
 
 	// -- calculate triangle area
 	f32v2 const v0f = as_f32v2(sp0);
@@ -339,52 +355,24 @@ static void rasterize_triangle(
 				f32x8 const wPersp = laneInvWIt.reciprocal(); // TODO newton rhaps?
 				f32v2x8 const interpUv = laneUvIt * wPersp;
 				// load from texture
-				f32v4x8 const texturedColor = (
-					ci.boundTexture.id != 0
-					?
-					srat::gfx::image_sample(
-						/*image=*/ ci.boundTexture,
-						/*uv=*/ interpUv
-					)
-					:
-					f32v4x8_splat(1.0f, 0.0f, 1.0f, 1.0f) // magenta
-				);
+				// f32v4x8 const texturedColor = (
+				// 	ci.boundTexture.id != 0
+				// 	?
+				// 	srat::gfx::image_sample(
+				// 		/*image=*/ ci.boundTexture,
+				// 		/*uv=*/ interpUv
+				// 	)
+				// 	:
+				// 	f32v4x8_splat(1.0f, 0.0f, 1.0f, 1.0f) // magenta
+				// );
 				// perspective-correct depth, no need for wPersp
 				f32x8 const interpDepth = laneDepthIt;
 
-				f32v4x8 finalColor;
-				switch (srat_shader_mode()) {
-					case ShaderMode::DisplayColor: {
-						finalColor = texturedColor;
-						break;
-					}
-					case ShaderMode::DisplayUv: {
-						finalColor = (
-							f32v4x8(
-								interpUv.x,
-								interpUv.y,
-								f32x8_splat(0.0f),
-								f32x8_splat(1.0f)
-							)
-						);
-						break;
-					}
-					case ShaderMode::DisplayDepth: {
-						finalColor = (
-							f32v4x8(
-								interpDepth,
-								interpDepth,
-								interpDepth,
-								f32x8_splat(1.0f)
-							)
-						);
-						break;
-					}
-					default: {
-						finalColor = f32v4x8_splat(1.0f, 0.0f, 1.0f, 1.0f); // magenta
-						break;
-					}
-				}
+				srat::FragmentInput const fragmentInput {
+					.uv = interpUv,
+					.material = materialData,
+				};
+				f32v4x8 finalColor = FusedShaderFragment::shade(fragmentInput);
 
 				rasterize_tile_write_pixel(
 					x, y, finalColor, interpDepth, mask,
@@ -393,7 +381,6 @@ static void rasterize_triangle(
 					/*depthData=*/ depthData,
 					/*depth16Lanes=*/ depth16Lanes,
 					/*maskLanes=*/ maskLanes
-
 				);
 			}
 
@@ -412,6 +399,7 @@ static void rasterize_triangle(
 	}
 }
 
+template <typename FusedShaderFragment>
 void srat::rasterizer_phase_rasterization(
 	srat::RasterizerPhaseRasterizationParams const & ci
 ) {
@@ -434,7 +422,7 @@ void srat::rasterizer_phase_rasterization(
 				};
 				srat::TileBin const & bin = srat::tile_grid_bin(ci.tileGrid, tile);
 				for (auto tri = 0u; tri < bin.triangleIndices.size(); ++tri) {
-					rasterize_triangle(RasterizeTriangleParams {
+					rasterize_triangle<FusedShaderFragment>(RasterizeTriangleParams {
 						.tileGrid = ci.tileGrid,
 						.tileBin = bin,
 						.triangleData = triangleData,
@@ -443,7 +431,7 @@ void srat::rasterizer_phase_rasterization(
 						.targetDim = targetDim,
 						.imageData = imageData,
 						.depthData = depthData,
-						.boundTexture = ci.boundTexture,
+						.boundMaterial = ci.boundMaterial,
 					});
 				}
 			}
@@ -456,3 +444,17 @@ void srat::rasterizer_phase_rasterization(
 		applyTile(tbb::blocked_range<u32>(0, numTiles));
 	}
 }
+
+// -- material explicit instantiations
+#include <srat/material-fragment-unlit.hpp>
+#include <srat/material-fragment-pbr-metallic-roughness.hpp>
+
+template void srat::rasterizer_phase_rasterization<srat::MaterialFragmentUnlit>(
+	srat::RasterizerPhaseRasterizationParams const & params
+);
+
+template void srat::rasterizer_phase_rasterization<
+	srat::MaterialFragmentPbrMetallicRoughness
+>(
+	srat::RasterizerPhaseRasterizationParams const & params
+);

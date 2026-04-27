@@ -1,13 +1,15 @@
 #include <srat/gfx-command-buffer.hpp>
 
-#include "internal-gfx-device.hpp"
+#include "internal/gfx-device.hpp"
+#include "internal/gfx-material-impl.hpp"
 
+#include <srat/material-fragment-pbr-metallic-roughness.hpp>
 #include <srat/core-handle.hpp>
 #include <srat/core-math.hpp>
+#include <srat/material-fragment-unlit.hpp>
 #include <srat/rasterizer-phase-bin.hpp>
 #include <srat/rasterizer-phase-rasterize.hpp>
 #include <srat/rasterizer-phase-vertex.hpp>
-#include <srat/rasterizer-reference.hpp>
 
 #include <tbb/parallel_for.h>
 
@@ -100,11 +102,11 @@ void sgfx::command_buffer_submit(
 	drawCommandsBatched.clear();
 
 	// this is dumb as fuck below
-	srat::gfx::Image referenceTexture {};
+	srat::gfx::MaterialHandle referenceMaterialHandle;
 	for (srat::gfx::DrawInfo const & drawCommand : impl.drawCommands) {
 		Let numTriangles = drawCommand.indexCount / 3u;
-		if (referenceTexture.id == 0) {
-			referenceTexture = drawCommand.boundTexture;
+		if (referenceMaterialHandle.id == 0) {
+			referenceMaterialHandle = drawCommand.boundMaterial;
 		}
 		// split it up into 32 commands if 1024 or more triangles
 		if (numTriangles < 1024) {
@@ -121,13 +123,13 @@ void sgfx::command_buffer_submit(
 			);
 			SRAT_ASSERT(batchStart < batchEnd);
 			drawCommandsBatched.emplace_back(srat::gfx::DrawInfo {
-				.boundTexture = drawCommand.boundTexture,
 				.modelViewProjection = drawCommand.modelViewProjection,
 				.vertexAttributes = drawCommand.vertexAttributes,
 				.indices = (
 					drawCommand.indices.subslice(batchStart, batchEnd - batchStart)
 				),
 				.indexCount = batchEnd - batchStart,
+				.boundMaterial = drawCommand.boundMaterial,
 			});
 		}
 	}
@@ -226,49 +228,6 @@ void sgfx::command_buffer_submit(
 		}
 	}
 
-	// if in reference mode then call reference rasterizer and return early
-	if (srat::gfx::device_reference_mode(device)) {
-		auto attrIdx = 0u;
-		std::vector<srat::ReferenceTriangle> referenceTriangles;
-		for (srat::gfx::DrawInfo const & drawCommand : drawCommandsBatched) {
-			for (auto triIt = 0u; triIt < drawCommand.indexCount / 3u; ++triIt) {
-				u32 const base = attrIdx;
-				attrIdx += 3;
-
-				referenceTriangles.emplace_back(srat::ReferenceTriangle {
-					.screenPos = {
-						cachedAttrPosSlice[base + 0],
-						cachedAttrPosSlice[base + 1],
-						cachedAttrPosSlice[base + 2],
-					},
-					.depth = {
-						cachedAttrDepthSlice[base + 0],
-						cachedAttrDepthSlice[base + 1],
-						cachedAttrDepthSlice[base + 2],
-					},
-					.perspectiveW = {
-						cachedAttrPerspWSlice[base + 0],
-						cachedAttrPerspWSlice[base + 1],
-						cachedAttrPerspWSlice[base + 2],
-					},
-					.uv = {
-						cachedAttrUvSlice[base + 0],
-						cachedAttrUvSlice[base + 1],
-						cachedAttrUvSlice[base + 2],
-					},
-				});
-			}
-		}
-		srat::rasterizer_reference_render(
-			referenceTexture,
-			srat::slice(referenceTriangles.data(), referenceTriangles.size()),
-			impl.viewport,
-			impl.targetColor,
-			impl.targetDepth
-		);
-		return;
-	}
-
 	// -- bin triangle data into tile grid
 	{
 		SRAT_PROFILE_SCOPE("bin");
@@ -283,13 +242,38 @@ void sgfx::command_buffer_submit(
 
 	// -- rasterize binned triangles into target framebuffer
 	{
-		SRAT_PROFILE_SCOPE("raster");
-		srat::rasterizer_phase_rasterization(RasterizerPhaseRasterizationParams {
-			.tileGrid = srat::gfx::device_tile_grid(device),
-			.viewport = impl.viewport,
-			.targetColor = impl.targetColor,
-			.targetDepth = impl.targetDepth,
-			.boundTexture = referenceTexture,
-		});
+		SRAT_PROFILE_SCOPE("rast");
+		auto const & mtrl = (
+			srat::gfx::impl_material_from_handle(referenceMaterialHandle)
+		);
+		switch (mtrl.type) {
+			case srat::gfx::MaterialType::Unlit: {
+				srat::rasterizer_phase_rasterization<
+					srat::MaterialFragmentUnlit
+				>(RasterizerPhaseRasterizationParams {
+					.tileGrid = srat::gfx::device_tile_grid(device),
+					.viewport = impl.viewport,
+					.targetColor = impl.targetColor,
+					.targetDepth = impl.targetDepth,
+					.boundMaterial = referenceMaterialHandle,
+				});
+				break;
+			}
+			case srat::gfx::MaterialType::PbrMetallicRoughness: {
+				srat::rasterizer_phase_rasterization<
+					srat::MaterialFragmentPbrMetallicRoughness
+				>(RasterizerPhaseRasterizationParams {
+					.tileGrid = srat::gfx::device_tile_grid(device),
+					.viewport = impl.viewport,
+					.targetColor = impl.targetColor,
+					.targetDepth = impl.targetDepth,
+					.boundMaterial = referenceMaterialHandle,
+				});
+			}
+			default: {
+				SRAT_ASSERT(false && "unsupported material type");
+				break;
+			}
+		}
 	}
 }

@@ -147,22 +147,10 @@ f32v4x8 srat::gfx::image_sample(
 	i32v2 const & dim = impl->dim;
 	// -- compute texel coord wrapped
 	f32v2x8 const scaledUV = uv * f32v2x8_splat((f32)dim.x, (f32)dim.y);
-	// wrap the scaled UV
+	// wrap the scaled UV and flip Y
 	f32v2x8 const wrappedUV = (
 		f32v2x8_modulo(scaledUV, f32v2x8_splat((f32)dim.x, (f32)dim.y))
 	);
-	// {
-	// 	// for now just return the UV
-	// 	f32v4x8 debugColor = f32v4x8 {
-	// 		wrappedUV.x,
-	// 		wrappedUV.y,
-	// 		f32x8_splat(0.0f),
-	// 		f32x8_splat(0.0f)
-	// 	};
-	// 	// normalize for debug visualization
-	// 	debugColor = debugColor / f32v4x8_splat((f32)dim.x, (f32)dim.y, 1.0f, 1.0f);
-	// 	return debugColor;
-	// }
 	i32v2x8 const texelCoord = f32v2x8_to_i32v2x8_floor(wrappedUV);
 	// below reference for clamped
 	i32v2x8 const clampedCoord = (

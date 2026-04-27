@@ -1,10 +1,5 @@
-[ ] logging library
-[ ] convert all the u32 to i32 for internal renderer
 [x] implement the profiling
-[ ] apply perf optimizations for raster and bin
 [x] add support for texturing
-[ ] add tiled image layout
-[ ] reimplement std::vector with a profiler that tracks per-frame allocs
 [ ] Hi-Z coarse occlusion
 [ ] Hi-Z heirarchical rasterization
 [ ] consider cheap spatial sorting
@@ -23,7 +18,7 @@
 [ ] post process
 [ ] PBR ?
 [ ] instancing
-[ ] GLTF support
+[x] GLTF support
 [ ] skeletal animation
 [ ] skinning
 [ ] bounding volume culling, frustum culling, etc
@@ -31,3 +26,10 @@
 [ ] mesh LOD selection
 [ ] decals
 [ ] deferred rendering
+
+low priority
+[ ] convert all the u32 to i32 for internal renderer
+[ ] logging library
+[ ] apply perf optimizations for raster and bin
+[ ] add tiled image layout
+[ ] reimplement std::vector with a profiler that tracks per-frame allocs

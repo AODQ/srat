@@ -23,14 +23,6 @@ bool & srat_sequential_writes();
 bool & srat_rasterize_parallel();
 bool & srat_vertex_parallel();
 
-// just a temp hack to change shader mode at runtime
-enum struct ShaderMode {
-	DisplayUv,
-	DisplayDepth,
-	DisplayColor,
-};
-ShaderMode & srat_shader_mode();
-
 // -----------------------------------------------------------------------------
 // -- tracy
 // -----------------------------------------------------------------------------

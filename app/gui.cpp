@@ -491,9 +491,10 @@ static void drawStatsBar(
 
 } // namespace
 
-// ─────────────────────────────────────────────────────────
-// Public entry point
-// ─────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+// public api
+// -----------------------------------------------------------------------------
+
 void guiUnitTestImages(
 	Image const & referenceColor,
 	Image const & referenceDepth,
@@ -1064,6 +1065,284 @@ void guiUnitTestImages(
 
 	// ── Stats bar ─────────────────────────────────────────
 	drawStatsBar(stats, chName);
+
+	ImGui::End();
+}
+
+// ─────────────────────────────────────────────────────────
+// Single-image display state
+// ─────────────────────────────────────────────────────────
+struct DisplayImageState {
+	u32 lastDataPtr;
+	bool         initialized;
+
+	Texture2D    gpuTex;
+	Texture2D    gpuHistTex;
+
+	bool  showHistogram;
+	f32   histMin;
+	f32   histMax;
+
+	bool  showInspector;
+
+	f32   zoom;
+	f32   panX;
+	f32   panY;
+};
+
+// ─────────────────────────────────────────────────────────
+// Single-image inspector tooltip (no ref/dev comparison)
+// ─────────────────────────────────────────────────────────
+namespace {
+
+static void showSingleInspector(
+	ImVec2 pMin, ImVec2 pMax,
+	Image const & img,
+	f32 zoom, f32 panX, f32 panY
+) {
+	ImVec2 const mouse = ImGui::GetIO().MousePos;
+	i32 tx = 0, ty = 0;
+	bool const hit = toTexel(
+		mouse, pMin, pMax,
+		img.width, img.height,
+		zoom, panX, panY, tx, ty
+	);
+	if (!hit) return;
+
+	Color const px = samplePixel(img, tx, ty);
+	f32 const lum  = pixelLuminance((u8 const *)img.data + (ty * img.width + tx) * 4);
+
+	static constexpr ImVec4 kDim = { 0.60f, 0.60f, 0.65f, 1.0f };
+
+	ImGui::BeginTooltip();
+
+	ImGui::TextColored(
+		ImVec4(0.40f, 0.70f, 1.0f, 1.0f),
+		"px (%d, %d)", tx, ty
+	);
+	ImGui::Separator();
+
+	ImGui::Text(
+		"R:%-3d G:%-3d B:%-3d A:%-3d",
+		px.r, px.g, px.b, px.a
+	);
+
+	ImGui::TextColored(kDim, "Lum: %.4f", lum);
+	ImGui::SameLine(0.f, 16.f);
+
+	ImGui::ColorButton(
+		"##sw",
+		ImVec4(px.r/255.f, px.g/255.f, px.b/255.f, 1.f),
+		ImGuiColorEditFlags_NoTooltip |
+		ImGuiColorEditFlags_NoBorder,
+		ImVec2(20.f, 20.f)
+	);
+
+	ImGui::EndTooltip();
+}
+
+} // namespace
+
+// -----------------------------------------------------------------------------
+
+void guiDisplayImage(Texture const & img, char const * title) {
+	static DisplayImageState s = {};
+
+	// ── Init / re-init when image data pointer changes ───
+	bool const needInit = (
+		!s.initialized ||
+		s.lastDataPtr != img.id
+	);
+
+	if (needInit) {
+		if (s.initialized) {
+			UnloadTexture(s.gpuTex);
+			if (s.gpuHistTex.id) UnloadTexture(s.gpuHistTex);
+		}
+
+		s.gpuTex    = img;
+		s.gpuHistTex = {};
+
+		if (!s.initialized) {
+			s.zoom          = 1.0f;
+			s.panX          = 0.0f;
+			s.panY          = 0.0f;
+			s.showInspector = true;
+			s.showHistogram = false;
+			s.histMin       = 0.0f;
+			s.histMax       = 1.0f;
+		}
+
+		s.lastDataPtr = img.id;
+		s.initialized = true;
+	}
+
+	// ── ImGui window ─────────────────────────────────────
+	ImGui::SetNextWindowSize(
+		ImVec2(800.f, 620.f), ImGuiCond_FirstUseEver
+	);
+	ImGuiWindowFlags const wFlags = (
+		ImGuiWindowFlags_NoScrollbar |
+		ImGuiWindowFlags_NoScrollWithMouse
+	);
+	char const * windowTitle = title ? title : "Image Viewer";
+	if (!ImGui::Begin(windowTitle, nullptr, wFlags)) {
+		ImGui::End();
+		return;
+	}
+
+	// ── Keyboard shortcuts ───────────────────────────────
+	if (ImGui::IsWindowFocused(
+		ImGuiFocusedFlags_RootAndChildWindows
+	)) {
+		if (ImGui::IsKeyPressed(ImGuiKey_R)) {
+			s.zoom = 1.0f;
+			s.panX = 0.0f;
+			s.panY = 0.0f;
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_I))
+			s.showInspector = !s.showInspector;
+		if (ImGui::IsKeyPressed(ImGuiKey_H))
+			s.showHistogram = !s.showHistogram;
+
+		if (ImGui::IsKeyPressed(ImGuiKey_Equal) ||
+		    ImGui::IsKeyPressed(ImGuiKey_KeypadAdd)) {
+			f32 const nz = s.zoom * 1.25f;
+			s.zoom = nz > 64.f ? 64.f : nz;
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_Minus) ||
+		    ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract)) {
+			f32 const nz = s.zoom * 0.8f;
+			s.zoom = nz < 0.1f ? 0.1f : nz;
+		}
+	}
+
+	// ── Toolbar ──────────────────────────────────────────
+	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.f);
+
+	// Histogram toggle
+	{
+		bool const on = s.showHistogram;
+		if (on) ImGui::PushStyleColor(
+			ImGuiCol_Button,
+			ImVec4(0.22f, 0.47f, 0.85f, 1.f)
+		);
+		if (ImGui::Button("Histogram"))
+			s.showHistogram = !s.showHistogram;
+		if (on) ImGui::PopStyleColor();
+		ImGui::SameLine();
+	}
+
+	ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+	ImGui::SameLine();
+
+	// Inspector toggle
+	{
+		bool const on = s.showInspector;
+		if (on) ImGui::PushStyleColor(
+			ImGuiCol_Button,
+			ImVec4(0.22f, 0.47f, 0.85f, 1.f)
+		);
+		if (ImGui::Button("Inspector"))
+			s.showInspector = !s.showInspector;
+		if (on) ImGui::PopStyleColor();
+		ImGui::SameLine();
+	}
+
+	ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+	ImGui::SameLine();
+
+	ImGui::TextDisabled("Zoom %.2fx", s.zoom);
+	ImGui::SameLine();
+	ImGui::TextDisabled("|");
+	ImGui::SameLine();
+	ImGui::TextDisabled("%dx%d", img.width, img.height);
+
+	ImGui::PopStyleVar();
+
+	// ── Histogram panel ───────────────────────────────────
+	if (s.showHistogram) {
+		f32 const prevMin = s.histMin;
+		f32 const prevMax = s.histMax;
+
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.f);
+		ImGui::Separator();
+		ImGui::Text("Brightness Range");
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(300.f);
+		ImGui::DragFloatRange2(
+			"##histRange",
+			&s.histMin, &s.histMax,
+			0.002f, 0.0f, 1.0f,
+			"Min: %.3f", "Max: %.3f"
+		);
+		if (s.histMin > s.histMax) s.histMin = s.histMax;
+
+		f32 const histW = ImGui::GetContentRegionAvail().x;
+		// drawHistogram(img, s.histMin, s.histMax, histW, 60.f);
+		ImGui::PopStyleVar();
+
+		// bool const rangeChanged = (
+		// 	s.histMin != prevMin ||
+		// 	s.histMax != prevMax ||
+		// 	!s.gpuHistTex.id
+		// );
+		// if (rangeChanged)
+		// 	buildHistTex(img, s.histMin, s.histMax, s.gpuHistTex);
+	}
+
+	// ── Select display texture ────────────────────────────
+	Texture2D const & dispTex = (
+		s.showHistogram && s.gpuHistTex.id
+		? s.gpuHistTex
+		: s.gpuTex
+	);
+
+	// ── Image panel ───────────────────────────────────────
+	f32 const imgH = ImGui::GetContentRegionAvail().y;
+	f32 const imgW = ImGui::GetContentRegionAvail().x;
+
+	ImGui::InvisibleButton("##img", ImVec2(imgW, imgH));
+	ImVec2 const pMin = ImGui::GetItemRectMin();
+	ImVec2 const pMax = ImGui::GetItemRectMax();
+	bool const hov = ImGui::IsItemHovered();
+	bool const act = ImGui::IsItemActive();
+
+	ImDrawList * dl = ImGui::GetWindowDrawList();
+
+	dl->AddRectFilled(pMin, pMax, IM_COL32(18, 18, 22, 255));
+	drawTexInRect(dl, pMin, pMax, dispTex, s.zoom, s.panX, s.panY);
+	dl->AddRect(pMin, pMax, IM_COL32(55, 55, 72, 180));
+	panelBadge(dl, pMin, windowTitle, IM_COL32(72, 210, 90, 255));
+
+	// ── Scroll to zoom ────────────────────────────────────
+	if (hov) {
+		f32 const wheel = ImGui::GetIO().MouseWheel;
+		if (wheel != 0.f) {
+			f32 const nz = s.zoom * std::pow(1.15f, wheel);
+			s.zoom = nz < 0.1f ? 0.1f : (nz > 64.f ? 64.f : nz);
+		}
+	}
+
+	// ── Pan with RMB or MMB ───────────────────────────────
+	bool const rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right);
+	bool const mmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+	if ((hov || act) && (rmbDown || mmbDown)) {
+		ImVec2 const md = ImGui::GetIO().MouseDelta;
+		s.panX += md.x;
+		s.panY += md.y;
+	}
+
+	// ── Pixel inspector ───────────────────────────────────
+	// if (s.showInspector && hov)
+	// 	showSingleInspector(pMin, pMax, img, s.zoom, s.panX, s.panY);
+
+	// ── Footer ────────────────────────────────────────────
+	ImGui::Separator();
+	ImGui::TextDisabled(
+		"[Scroll/+/-] Zoom   [RMB/MMB] Pan   "
+		"[R] Reset   [I] Inspector   [H] Histogram"
+	);
 
 	ImGui::End();
 }

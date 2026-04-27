@@ -1,6 +1,6 @@
 #include <srat/gfx-device.hpp>
 
-#include "internal-gfx-device.hpp"
+#include "internal/gfx-device.hpp"
 
 #include <srat/core-handle.hpp>
 #include <srat/rasterizer-tile-grid.hpp>
@@ -68,12 +68,6 @@ void srat::gfx::device_prepare_draw(
 			.imageHeight = viewport.dim.y,
 		});
 	}
-}
-
-bool srat::gfx::device_reference_mode(Device const & device) {
-	Let impl = sDevicePool.get(device);
-	SRAT_ASSERT(impl != nullptr);
-	return impl->referenceMode;
 }
 
 srat::TileGrid & srat::gfx::device_tile_grid(Device const & device) {
