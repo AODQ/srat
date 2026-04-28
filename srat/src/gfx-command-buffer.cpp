@@ -100,19 +100,33 @@ void sgfx::command_buffer_submit(
 
 	// -- break up draw commands into smaller batches to allow parallelization
 	//    of vertex processing
-	static std::vector<srat::gfx::DrawInfo> drawCommandsBatched;
-	drawCommandsBatched.clear();
+	struct MaterialBatch {
+		srat::gfx::MaterialHandle material;
+		std::vector<srat::gfx::DrawInfo> drawCommands;
+	};
+
+	static std::vector<MaterialBatch> materialsBatched;
+	materialsBatched.clear();
+
+	auto const & findMaterialBatch = (
+		[&](srat::gfx::MaterialHandle material) -> MaterialBatch & {
+			for (MaterialBatch & batch : materialsBatched) {
+				if (batch.material.id == material.id) {
+					return batch;
+				}
+			}
+			materialsBatched.emplace_back(MaterialBatch { material, {} });
+			return materialsBatched.back();
+		}
+	);
 
 	// this is dumb as fuck below
-	srat::gfx::MaterialHandle referenceMaterialHandle;
 	for (srat::gfx::DrawInfo const & drawCommand : impl.drawCommands) {
 		Let numTriangles = drawCommand.indexCount / 3u;
-		if (referenceMaterialHandle.id == 0) {
-			referenceMaterialHandle = drawCommand.boundMaterial;
-		}
-		// split it up into 32 commands if 1024 or more triangles
+		MaterialBatch & batch = findMaterialBatch(drawCommand.boundMaterial);
+		// split it up into 32 commands only if 1024 or more triangles
 		if (numTriangles < 1024) {
-			drawCommandsBatched.emplace_back(drawCommand);
+			batch.drawCommands.emplace_back(drawCommand);
 			continue;
 		}
 		u32 const batchSize = 32;
@@ -124,7 +138,7 @@ void sgfx::command_buffer_submit(
 				u32_min(batchStart + indicesPerBatch, drawCommand.indexCount)
 			);
 			SRAT_ASSERT(batchStart < batchEnd);
-			drawCommandsBatched.emplace_back(srat::gfx::DrawInfo {
+			batch.drawCommands.emplace_back(srat::gfx::DrawInfo {
 				.modelViewProjection = drawCommand.modelViewProjection,
 				.vertexAttributes = drawCommand.vertexAttributes,
 				.indices = (
@@ -136,151 +150,157 @@ void sgfx::command_buffer_submit(
 		}
 	}
 
-	// -- precalculate cached allocations
-	auto numTriangles = 0u;
-	for (srat::gfx::DrawInfo const & drawCommand : drawCommandsBatched) {
-		SRAT_ASSERT(drawCommand.indexCount % 3 == 0);
-		// offset into the beginning of the buffer
-		cachedAttrOffsetsPerDrawCommand.emplace_back(numTriangles * 3u);
-		// the current capacity of the buffer
-		numTriangles += drawCommand.indexCount / 3u;
-	}
-	cachedAttrPos.resize(numTriangles*3);
-	cachedAttrDepth.resize(numTriangles*3);
-	cachedAttrPerspW.resize(numTriangles*3);
-	cachedAttrUv.resize(numTriangles*3);
-	cachedAttrNormal.resize(numTriangles*3);
+	for (MaterialBatch const & batch : materialsBatched) {
+		srat::gfx::MaterialHandle const referenceMaterialHandle = batch.material;
+		std::vector<srat::gfx::DrawInfo> const & drawCommandsBatched = (
+			batch.drawCommands
+		);
+		// -- precalculate cached allocations
+		auto numTriangles = 0u;
+		for (srat::gfx::DrawInfo const & drawCommand : drawCommandsBatched) {
+			SRAT_ASSERT(drawCommand.indexCount % 3 == 0);
+			// offset into the beginning of the buffer
+			cachedAttrOffsetsPerDrawCommand.emplace_back(numTriangles * 3u);
+			// the current capacity of the buffer
+			numTriangles += drawCommand.indexCount / 3u;
+		}
+		cachedAttrPos.resize(numTriangles*3);
+		cachedAttrDepth.resize(numTriangles*3);
+		cachedAttrPerspW.resize(numTriangles*3);
+		cachedAttrUv.resize(numTriangles*3);
+		cachedAttrNormal.resize(numTriangles*3);
 
-	Let cachedAttrPosSlice = srat::slice(cachedAttrPos.data(), numTriangles*3);
-	Let cachedAttrDepthSlice = (
-		srat::slice(cachedAttrDepth.data(), numTriangles*3)
-	);
-	Let cachedAttrPerspWSlice = (
-		srat::slice(cachedAttrPerspW.data(), numTriangles*3)
-	);
-	Let cachedAttrUvSlice = (
-		srat::slice(cachedAttrUv.data(), numTriangles*3)
-	);
-	Let cachedAttrNormalSlice = (
-		srat::slice((f32v3*)cachedAttrNormal.data(), numTriangles*3)
-	);
+		Let cachedAttrPosSlice = srat::slice(cachedAttrPos.data(), numTriangles*3);
+		Let cachedAttrDepthSlice = (
+			srat::slice(cachedAttrDepth.data(), numTriangles*3)
+		);
+		Let cachedAttrPerspWSlice = (
+			srat::slice(cachedAttrPerspW.data(), numTriangles*3)
+		);
+		Let cachedAttrUvSlice = (
+			srat::slice(cachedAttrUv.data(), numTriangles*3)
+		);
+		Let cachedAttrNormalSlice = (
+			srat::slice((f32v3*)cachedAttrNormal.data(), numTriangles*3)
+		);
 
-	// -- verify every attribute has data (for now)
-#if SRAT_DEBUG()
-	{
+		// -- verify every attribute has data (for now)
+	#if SRAT_DEBUG()
+		{
+			for (srat::gfx::DrawInfo const & drawCommand : drawCommandsBatched) {
+				Let va = srat::gfx::VertexAttributes { drawCommand.vertexAttributes };
+				SRAT_ASSERT(va.position.data.size() > 0);
+				SRAT_ASSERT(va.uv.data.size() > 0);
+			}
+		}
+
+		// -- verify every draw command has indices
+		{
+			for (srat::gfx::DrawInfo const & drawCommand : drawCommandsBatched) {
+				SRAT_ASSERT(drawCommand.indices.size() > 0);
+			}
+		}
+
+		// -- verify every draw command has at least one triangle
+		{
+			for (srat::gfx::DrawInfo const & drawCommand : drawCommandsBatched) {
+				SRAT_ASSERT(drawCommand.indexCount >= 3);
+			}
+		}
+
+
+		// -- verify indices are all within bounds of vertex attributes
 		for (srat::gfx::DrawInfo const & drawCommand : drawCommandsBatched) {
 			Let va = srat::gfx::VertexAttributes { drawCommand.vertexAttributes };
-			SRAT_ASSERT(va.position.data.size() > 0);
-			SRAT_ASSERT(va.uv.data.size() > 0);
-		}
-	}
-
-	// -- verify every draw command has indices
-	{
-		for (srat::gfx::DrawInfo const & drawCommand : drawCommandsBatched) {
-			SRAT_ASSERT(drawCommand.indices.size() > 0);
-		}
-	}
-
-	// -- verify every draw command has at least one triangle
-	{
-		for (srat::gfx::DrawInfo const & drawCommand : drawCommandsBatched) {
-			SRAT_ASSERT(drawCommand.indexCount >= 3);
-		}
-	}
-
-
-	// -- verify indices are all within bounds of vertex attributes
-	for (srat::gfx::DrawInfo const & drawCommand : drawCommandsBatched) {
-		Let va = srat::gfx::VertexAttributes { drawCommand.vertexAttributes };
-		for (Let i : drawCommand.indices) {
-			SRAT_ASSERT(va.position.data.size() > i * va.position.byteStride);
-			SRAT_ASSERT(va.uv.data.size() > i * va.uv.byteStride);
-		}
-	}
-#endif
-
-	// -- compute cached triangle through vertex phase
-	auto const & phaseVertexApply = (
-		[&](tbb::blocked_range<size_t> const & range) {
-			for (size_t i = range.begin(); i < range.end(); ++i) {
-				srat::gfx::DrawInfo const & drawCommand = drawCommandsBatched[i];
-				uint const attrOffset = (
-					cachedAttrOffsetsPerDrawCommand[i]
-				);
-				SRAT_ASSERT(numTriangles*3 >= attrOffset);
-				srat::rasterizer_phase_vertex(RasterizerStageVertexParams {
-					.draw = drawCommand,
-					.viewport = impl.viewport,
-					.outPositions = cachedAttrPosSlice,
-					.outDepth = cachedAttrDepthSlice,
-					.outPerspectiveW = cachedAttrPerspWSlice,
-					.outUvs = cachedAttrUvSlice,
-					.outNormals = cachedAttrNormalSlice,
-					.attrOffset = attrOffset,
-				});
+			for (Let i : drawCommand.indices) {
+				SRAT_ASSERT(va.position.data.size() > i * va.position.byteStride);
+				SRAT_ASSERT(va.uv.data.size() > i * va.uv.byteStride);
 			}
 		}
-	);
+	#endif
 
-	{
-		SRAT_PROFILE_SCOPE("vtx");
-		if (srat_vertex_parallel()) {
-			tbb::parallel_for(
-				tbb::blocked_range<size_t>(0, drawCommandsBatched.size()),
-				phaseVertexApply
-			);
-		} else {
-			phaseVertexApply(tbb::blocked_range<size_t>(0, drawCommandsBatched.size()));
-		}
-	}
-
-	// -- bin triangle data into tile grid
-	{
-		SRAT_PROFILE_SCOPE("bin");
-		srat::rasterizer_phase_bin(RasterizerPhaseBinParams {
-			.tileGrid = srat::gfx::device_tile_grid(device),
-			.trianglePositions = cachedAttrPosSlice,
-			.triangleDepths = cachedAttrDepthSlice,
-			.trianglePerspectiveW = cachedAttrPerspWSlice,
-			.triangleUvs = cachedAttrUvSlice,
-			.triangleNormals = cachedAttrNormalSlice,
-		});
-	}
-
-	// -- rasterize binned triangles into target framebuffer
-	{
-		SRAT_PROFILE_SCOPE("rast");
-		auto const & mtrl = (
-			srat::gfx::impl_material_from_handle(referenceMaterialHandle)
+		// -- compute cached triangle through vertex phase
+		auto const & phaseVertexApply = (
+			[&](tbb::blocked_range<size_t> const & range) {
+				for (size_t i = range.begin(); i < range.end(); ++i) {
+					srat::gfx::DrawInfo const & drawCommand = drawCommandsBatched[i];
+					uint const attrOffset = (
+						cachedAttrOffsetsPerDrawCommand[i]
+					);
+					SRAT_ASSERT(numTriangles*3 >= attrOffset);
+					srat::rasterizer_phase_vertex(RasterizerStageVertexParams {
+						.draw = drawCommand,
+						.viewport = impl.viewport,
+						.outPositions = cachedAttrPosSlice,
+						.outDepth = cachedAttrDepthSlice,
+						.outPerspectiveW = cachedAttrPerspWSlice,
+						.outUvs = cachedAttrUvSlice,
+						.outNormals = cachedAttrNormalSlice,
+						.attrOffset = attrOffset,
+					});
+				}
+			}
 		);
-		switch (mtrl.type) {
-			case srat::gfx::MaterialType::Unlit: {
-				srat::rasterizer_phase_rasterization<
-					srat::MaterialFragmentUnlit
-				>(RasterizerPhaseRasterizationParams {
-					.tileGrid = srat::gfx::device_tile_grid(device),
-					.viewport = impl.viewport,
-					.targetColor = impl.targetColor,
-					.targetDepth = impl.targetDepth,
-					.boundMaterial = referenceMaterialHandle,
-				});
-				break;
+
+		{
+			SRAT_PROFILE_SCOPE("vtx");
+			if (srat_vertex_parallel()) {
+				tbb::parallel_for(
+					tbb::blocked_range<size_t>(0, drawCommandsBatched.size()),
+					phaseVertexApply
+				);
+			} else {
+				phaseVertexApply(tbb::blocked_range<size_t>(0, drawCommandsBatched.size()));
 			}
-			case srat::gfx::MaterialType::PbrMetallicRoughness: {
-				srat::rasterizer_phase_rasterization<
-					srat::MaterialFragmentPbrMetallicRoughness
-				>(RasterizerPhaseRasterizationParams {
-					.tileGrid = srat::gfx::device_tile_grid(device),
-					.viewport = impl.viewport,
-					.targetColor = impl.targetColor,
-					.targetDepth = impl.targetDepth,
-					.boundMaterial = referenceMaterialHandle,
-				});
-			}
-			default: {
-				SRAT_ASSERT(false && "unsupported material type");
-				break;
+		}
+
+		// -- bin triangle data into tile grid
+		{
+			SRAT_PROFILE_SCOPE("bin");
+			srat::rasterizer_phase_bin(RasterizerPhaseBinParams {
+				.tileGrid = srat::gfx::device_tile_grid(device),
+				.trianglePositions = cachedAttrPosSlice,
+				.triangleDepths = cachedAttrDepthSlice,
+				.trianglePerspectiveW = cachedAttrPerspWSlice,
+				.triangleUvs = cachedAttrUvSlice,
+				.triangleNormals = cachedAttrNormalSlice,
+			});
+		}
+
+		// -- rasterize binned triangles into target framebuffer
+		{
+			SRAT_PROFILE_SCOPE("rast");
+			auto const & mtrl = (
+				srat::gfx::impl_material_from_handle(referenceMaterialHandle)
+			);
+			switch (mtrl.type) {
+				case srat::gfx::MaterialType::Unlit: {
+					srat::rasterizer_phase_rasterization<
+						srat::MaterialFragmentUnlit
+					>(RasterizerPhaseRasterizationParams {
+						.tileGrid = srat::gfx::device_tile_grid(device),
+						.viewport = impl.viewport,
+						.targetColor = impl.targetColor,
+						.targetDepth = impl.targetDepth,
+						.boundMaterial = referenceMaterialHandle,
+					});
+					break;
+				}
+				case srat::gfx::MaterialType::PbrMetallicRoughness: {
+					srat::rasterizer_phase_rasterization<
+						srat::MaterialFragmentPbrMetallicRoughness
+					>(RasterizerPhaseRasterizationParams {
+						.tileGrid = srat::gfx::device_tile_grid(device),
+						.viewport = impl.viewport,
+						.targetColor = impl.targetColor,
+						.targetDepth = impl.targetDepth,
+						.boundMaterial = referenceMaterialHandle,
+					});
+				}
+				default: {
+					SRAT_ASSERT(false && "unsupported material type");
+					break;
+				}
 			}
 		}
 	}

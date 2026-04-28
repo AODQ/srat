@@ -28,6 +28,8 @@ static bool animationEnabled = true;
 // only one mode runs at a time.  the first N entries mirror PerfSuiteMode,
 // the last entry is the normal scene renderer.
 
+static ImageViewerCameraInput sCameraInput {};
+
 enum struct AppMode : u32 {
 	PerfVertex  = (u32)PerfSuiteMode::Vertex,
 	PerfBinning = (u32)PerfSuiteMode::Binning,
@@ -68,41 +70,72 @@ void raylib_shutdown()
 // -- camera state (controlled via ImGui)
 // -----------------------------------------------------------------------------
 
-struct CameraState {
-	f32 orbitAngle   = 0.0f;   // current orbit angle (radians)
-	f32 radiusMult   = 1.2f;   // multiplier on maxDim for orbit radius
-	f32 heightOffset = 0.3f;   // fraction of maxDim added to center.y
-	f32 panX         = 0.0f;   // world-space lateral pan
-	f32 panY         = 0.0f;   // world-space vertical pan
-	f32 orbitSpeed   = 1.0f;   // animation speed multiplier
-	f32 fovDeg       = 90.0f;  // vertical field of view in degrees
-};
-
-static CameraState sCam;
-
-// ai slop camera orbit
-f32m44 compute_orbit_view(SratModel const & model, CameraState const & cam)
+f32m44 compute_orbit_view(SratModel const & model)
 {
+	auto & input = sCameraInput;
+	// Camera constants
+	constexpr float kBaseOrbitAngle   = 0.0f;  // default orbit angle
+	constexpr float kBaseElevation	= 0.0f;  // default elevation (in radians), change to e.g. pi/6 for isometric
+	constexpr float kBaseRadiusMult   = 1.2f;  // default zoom
+	constexpr float kBaseHeightOffset = 0.3f;
+	constexpr float kOrbitSpeed	   = 0.01f;
+	constexpr float kElevSpeed		= 0.01f;
+	constexpr float kPanSpeed		 = 0.01f;
+	constexpr float kZoomSpeed		= 0.05f;
+
+	// Center and size from model
 	f32v3 const center = model.center();
 	f32v3 const size   = model.size();
 	f32 const maxDim   = f32_max(size.x, f32_max(size.y, size.z));
-	f32 const radius   = maxDim * cam.radiusMult;
 
-	// Camera position orbiting in XZ plane
-	f32 const camX = center.x + radius * cosf(cam.orbitAngle);
-	f32 const camZ = center.z + radius * sinf(cam.orbitAngle);
-	f32 const camY = center.y + maxDim * cam.heightOffset;
+	// ----- Compute camera parameter deltas from input -----
+	float orbitAngle   = kBaseOrbitAngle + input.orbitDX * kOrbitSpeed + input.orbitXDX * kOrbitSpeed;  // add more sources as needed
+	float elevation	= kBaseElevation  + input.orbitDY * kElevSpeed;
+	float radiusMult   = kBaseRadiusMult + input.scroll   * kZoomSpeed;
+	float heightOffset = kBaseHeightOffset;
+	float panX		 = input.panDX * kPanSpeed;
+	float panY		 = input.panDY * kPanSpeed;
 
-	// Apply pan: move eye and target together along camera-right and up
-	f32v3 const rawEye    = f32v3{camX, camY, camZ};
-	f32v3 const forward   = f32v3_normalize(center - rawEye);
-	f32v3 const right     = f32v3_normalize(f32v3_cross(forward, f32v3{0.0f, 1.0f, 0.0f}));
-	f32v3 const upVec     = f32v3_cross(right, forward);
-	f32v3 const panOffset = right * cam.panX + upVec * cam.panY;
+	// Handle reset buttons
+	if (input.resetForward) {
+		orbitAngle   = 0.0f;
+		elevation	= 0.0f;
+		panX		 = 3.14159265f;
+		panY		 = 0.0f;
+		radiusMult   = kBaseRadiusMult;
+	} else if (input.resetTop) {
+		orbitAngle   = 0.0f;
+		elevation	= 3.14159265f/2.0f;
+		panX		 = 0.0f;
+		panY		 = 0.0f;
+		radiusMult   = kBaseRadiusMult;
+	} else if (input.resetSide) {
+		orbitAngle   = 3.14159265f/2.0f;
+		elevation	= 0.0f;
+		panX		 = 0.0f;
+		panY		 = 0.0f;
+		radiusMult   = kBaseRadiusMult;
+	}
+	if (radiusMult < 0.05f) radiusMult = 0.05f;
 
-	auto const eye     = rawEye + panOffset;
-	f32v3 const target = center + panOffset;
-	auto const up      = f32v3{0.0f, 1.0f, 0.0f};
+	float radius = maxDim * radiusMult;
+
+	// Spherical coordinates
+	float cx = center.x + radius * cosf(elevation) * cosf(orbitAngle);
+	float cy = center.y + radius * sinf(elevation) + maxDim * heightOffset;
+	float cz = center.z + radius * cosf(elevation) * sinf(orbitAngle);
+
+	// Pan (right/up in view)
+	auto eye0	= f32v3{cx, cy, cz};
+	f32v3 forward = f32v3_normalize(center - eye0);
+	f32v3 right   = f32v3_normalize(f32v3_cross(forward, f32v3{0.0f, 1.0f, 0.0f}));
+	f32v3 upVec   = f32v3_cross(right, forward);
+
+	f32v3 panOffset = right * panX + upVec * panY;
+
+	f32v3 eye	= eye0 + panOffset;
+	f32v3 target = center + panOffset;
+	auto up	 = f32v3{0.0f, 1.0f, 0.0f};
 
 	return f32m44_lookat(eye, target, up);
 }
@@ -130,15 +163,18 @@ void draw_scene(
 		depthPtr[i] = UINT16_MAX; // max depth
 	}
 
+	f32 fovDeg = 90.0f;
+
+
 	// -- build modelviewproj
 	f32m44 const proj = (
 		f32m44_perspective(
-			sCam.fovDeg * (std::numbers::pi_v<float> / 180.f),
+			fovDeg * (std::numbers::pi_v<float> / 180.f),
 			/*aspect=*/ 1.0f, 0.1f, 500.0f
 		)
 	);
 	// rotate around the center of the model, and move back so it's visible
-	f32m44 const view = compute_orbit_view(model, sCam);
+	f32m44 const view = compute_orbit_view(model);
 	f32m44 const modelViewProj = proj * view;
 	// -- record command buffer
 	srat::gfx::CommandBuffer cmdBuf = srat::gfx::command_buffer_create();
@@ -275,10 +311,11 @@ i32 main(i32 const argc, char const * const * argv)
 	srat::gfx::Device const device = srat::gfx::device_create({});
 
 	// debug uses a cheap model
+	#define MODEL "UnlitTest"
 	SratModel model = (
 		load_gltf_model_from_file(
-			// "assets/third-party/doom3player.glb"
-			"assets/glTF-Sample-Assets/Models/SimpleTexture/glTF/SimpleTexture.gltf"
+			"assets/glTF-Sample-Assets/Models/"
+			MODEL "/glTF/" MODEL ".gltf"
 		)
 	);
 
@@ -290,7 +327,7 @@ i32 main(i32 const argc, char const * const * argv)
 	// 		modelMeshDrawInfos.push_back(mesh.drawInfo);
 	// 	}
 	// 	perf_suite_run_startup(PerfSuiteStartupConfig {
-	// 		.device      = device,
+	// 		.device	  = device,
 	// 		.targetColor = imageColor,
 	// 		.targetDepth = sratImageDepth,
 	// 		.targetDim   = kTargetDim,
@@ -302,11 +339,6 @@ i32 main(i32 const argc, char const * const * argv)
 	{
 		BeginDrawing();
 		ClearBackground(RAYWHITE);
-
-		// -- advance orbit angle
-		if (animationEnabled) {
-			sCam.orbitAngle += GetFrameTime() * sCam.orbitSpeed;
-		}
 
 		// -- here is the srat hookup
 		srat::Profiler::frame_begin();
@@ -365,7 +397,7 @@ i32 main(i32 const argc, char const * const * argv)
 			}
 			UpdateTexture(deviceTexOut, flippedData.data());
 
-			guiDisplayImage(deviceTexOut, "render output");
+			guiDisplayImage(deviceTexOut, "render output", &sCameraInput);
 		}
 
 		// runtime settings
@@ -392,7 +424,7 @@ i32 main(i32 const argc, char const * const * argv)
 
 			ImGui::Text("average frame time: %.2f ms", timeSinceLastUpdateTime);
 			ImGui::Text(
-				"    (%.1f fps)",
+				"	(%.1f fps)",
 				timeSinceLastUpdateTime > 0.f ? 1000.f/timeSinceLastUpdateTime:0.f
 			);
 
@@ -436,35 +468,6 @@ i32 main(i32 const argc, char const * const * argv)
 				srat_tile_size() = tileSize * 8;
 			}
 			ImGui::Text("(tile size: %d)", (i32)srat_tile_size());
-
-			// -- camera controls
-			ImGui::Separator();
-			if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-				// Manual orbit angle scrub (most useful when animation is paused)
-				ImGui::SliderFloat(
-					"Orbit Angle", &sCam.orbitAngle,
-					0.0f, 2.0f * std::numbers::pi_v<float>, "%.2f rad"
-				);
-				ImGui::SliderFloat("Orbit Speed",   &sCam.orbitSpeed,   0.0f, 5.0f,  "%.2f");
-				// reverse 1.0 scale to 10.0 and 10.0 to 1.0
-				static f32 radiusInverse = sCam.radiusMult;
-				ImGui::SliderFloat(
-					"Radius Mult",
-					&radiusInverse,
-					0.1f, 2.0f,
-					"%.2f"
-				);
-				sCam.radiusMult = 2.0f - radiusInverse;
-				// static multInverse = 1.0f / sCam.radiusMult;
-				// // ImGui::SliderFloat("Radius Mult",   &sCam.radiusMult,   0.5f, 10.0f, "%.2f");
-				ImGui::SliderFloat("Height Offset", &sCam.heightOffset, -2.0f, 2.0f, "%.2f");
-				ImGui::DragFloat("Pan X", &sCam.panX, 0.01f, -50.0f, 50.0f, "%.2f");
-				ImGui::DragFloat("Pan Y", &sCam.panY, 0.01f, -50.0f, 50.0f, "%.2f");
-				ImGui::SliderFloat("FoV (deg)", &sCam.fovDeg, 10.0f, 170.0f, "%.1f");
-				if (ImGui::Button("Reset Camera")) {
-					sCam = CameraState{};
-				}
-			}
 
 			ImGui::End();
 			gui_profiler();

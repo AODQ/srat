@@ -1167,7 +1167,8 @@ void guiDisplayImage(
 		// Right drag → pan
 		if (ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0.f)) {
 			cameraInput->panDX += md.x;
-			cameraInput->panDY += md.y;
+
+			cameraInput->panDY -= md.y;
 		}
 		// Scroll → zoom radius
 		cameraInput->scroll += ImGui::GetIO().MouseWheel;
