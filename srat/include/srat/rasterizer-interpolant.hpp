@@ -21,6 +21,12 @@ template <> struct InterpolantRow<f32v2> {
 		return f32v2x8_splat(v.x, v.y);
 	}
 };
+template <> struct InterpolantRow<f32v3> {
+	using type = f32v3x8;
+	static constexpr type splat(f32v3 const v) {
+		return f32v3x8_splat(v.x, v.y, v.z);
+	}
+};
 
 template <typename T>
 struct Interpolant {

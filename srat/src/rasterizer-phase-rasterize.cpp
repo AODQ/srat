@@ -147,6 +147,9 @@ static void rasterize_triangle(
 	f32v2 const uv0 = tri.uv[0];
 	f32v2 const uv1 = tri.uv[1];
 	f32v2 const uv2 = tri.uv[2];
+	f32v3 const normal0 = tri.normal[0];
+	f32v3 const normal1 = tri.normal[1];
+	f32v3 const normal2 = tri.normal[2];
 // NOLINTBEGIN(cppcoreguidelines-pro-type-member-init)
 	alignas(32) srat::array<f32, 8> depth16Lanes;
 	alignas(32) srat::array<u32, 8> maskLanes;
@@ -245,6 +248,22 @@ static void rasterize_triangle(
 			/*w2Start=*/ w2Start * rcpArea
 		)
 	);
+	auto normal = (
+		srat::Interpolant<f32v3>::make(
+			/*a0=*/ normal0,
+			/*a1=*/ normal1,
+			/*a2=*/ normal2,
+			/*dw0dx=*/ dw0Dx * rcpArea,
+			/*dw1dx=*/ dw1Dx * rcpArea,
+			/*dw2dx=*/ dw2Dx * rcpArea,
+			/*dw0dy=*/ dw0Dy * rcpArea,
+			/*dw1dy=*/ dw1Dy * rcpArea,
+			/*dw2dy=*/ dw2Dy * rcpArea,
+			/*w0Start=*/ w0Start * rcpArea,
+			/*w1Start=*/ w1Start * rcpArea,
+			/*w2Start=*/ w2Start * rcpArea
+		)
+	);
 	auto depth = (
 		srat::Interpolant<f32>::make(
 			/*a0=*/ d0,
@@ -331,6 +350,7 @@ static void rasterize_triangle(
 			  f32x8_splat(w2Row) + w2LaneInit + f32x8_splat(dw2Dx * skipOffset)
 		);
 		f32v2x8 laneUvIt = uv.simdRow(laneOffsetsSkipped);
+		f32v3x8 laneNormalIt = normal.simdRow(laneOffsetsSkipped);
 		f32x8 laneDepthIt = depth.simdRow(laneOffsetsSkipped);
 		f32x8 laneInvWIt = invW.simdRow(laneOffsetsSkipped);
 
@@ -354,22 +374,12 @@ static void rasterize_triangle(
 				anyPixelWritten = true;
 				f32x8 const wPersp = laneInvWIt.reciprocal(); // TODO newton rhaps?
 				f32v2x8 const interpUv = laneUvIt * wPersp;
-				// load from texture
-				// f32v4x8 const texturedColor = (
-				// 	ci.boundTexture.id != 0
-				// 	?
-				// 	srat::gfx::image_sample(
-				// 		/*image=*/ ci.boundTexture,
-				// 		/*uv=*/ interpUv
-				// 	)
-				// 	:
-				// 	f32v4x8_splat(1.0f, 0.0f, 1.0f, 1.0f) // magenta
-				// );
-				// perspective-correct depth, no need for wPersp
+				f32v3x8 const interpNormal = f32v3x8_normalize(laneNormalIt);
 				f32x8 const interpDepth = laneDepthIt;
 
 				srat::FragmentInput const fragmentInput {
 					.uv = interpUv,
+					.normal = interpNormal,
 					.material = materialData,
 				};
 				f32v4x8 finalColor = FusedShaderFragment::shade(fragmentInput);

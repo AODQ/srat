@@ -19,6 +19,7 @@ namespace srat {
 		srat::slice<triangle_depth_t> outDepth;
 		srat::slice<triangle_perspective_w_t> outPerspectiveW;
 		srat::slice<f32v2> outUvs;
+		srat::slice<f32v3> outNormals;
 		u32 const attrOffset;
 	};
 	void rasterizer_phase_vertex(RasterizerStageVertexParams const & params);

@@ -19,6 +19,7 @@ namespace srat {
 		srat::array<float, 3> depth {};
 		srat::array<float, 3> perspectiveW {};
 		srat::array<f32v2, 3> uv {};
+		srat::array<f32v3, 3> normal {};
 	};
 
 	// tile bin structure

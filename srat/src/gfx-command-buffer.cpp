@@ -87,6 +87,7 @@ void sgfx::command_buffer_submit(
 	static std::vector<triangle_depth_t> cachedAttrDepth;
 	static std::vector<triangle_perspective_w_t> cachedAttrPerspW;
 	static std::vector<f32v2> cachedAttrUv;
+	static std::vector<f32v3> cachedAttrNormal;
 	// this wil enable parallelization of vertex processing
 	static std::vector<size_t> cachedAttrOffsetsPerDrawCommand;
 
@@ -94,6 +95,7 @@ void sgfx::command_buffer_submit(
 	cachedAttrDepth.clear();
 	cachedAttrPerspW.clear();
 	cachedAttrUv.clear();
+	cachedAttrNormal.clear();
 	cachedAttrOffsetsPerDrawCommand.clear();
 
 	// -- break up draw commands into smaller batches to allow parallelization
@@ -147,6 +149,7 @@ void sgfx::command_buffer_submit(
 	cachedAttrDepth.resize(numTriangles*3);
 	cachedAttrPerspW.resize(numTriangles*3);
 	cachedAttrUv.resize(numTriangles*3);
+	cachedAttrNormal.resize(numTriangles*3);
 
 	Let cachedAttrPosSlice = srat::slice(cachedAttrPos.data(), numTriangles*3);
 	Let cachedAttrDepthSlice = (
@@ -157,6 +160,9 @@ void sgfx::command_buffer_submit(
 	);
 	Let cachedAttrUvSlice = (
 		srat::slice(cachedAttrUv.data(), numTriangles*3)
+	);
+	Let cachedAttrNormalSlice = (
+		srat::slice((f32v3*)cachedAttrNormal.data(), numTriangles*3)
 	);
 
 	// -- verify every attribute has data (for now)
@@ -210,6 +216,7 @@ void sgfx::command_buffer_submit(
 					.outDepth = cachedAttrDepthSlice,
 					.outPerspectiveW = cachedAttrPerspWSlice,
 					.outUvs = cachedAttrUvSlice,
+					.outNormals = cachedAttrNormalSlice,
 					.attrOffset = attrOffset,
 				});
 			}
@@ -237,6 +244,7 @@ void sgfx::command_buffer_submit(
 			.triangleDepths = cachedAttrDepthSlice,
 			.trianglePerspectiveW = cachedAttrPerspWSlice,
 			.triangleUvs = cachedAttrUvSlice,
+			.triangleNormals = cachedAttrNormalSlice,
 		});
 	}
 

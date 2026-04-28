@@ -12,6 +12,7 @@ namespace srat {
 		srat::slice<triangle_depth_t> triangleDepths;
 		srat::slice<triangle_perspective_w_t> trianglePerspectiveW;
 		srat::slice<f32v2> triangleUvs;
+		srat::slice<f32v3> triangleNormals;
 	};
 
 	void rasterizer_phase_bin(

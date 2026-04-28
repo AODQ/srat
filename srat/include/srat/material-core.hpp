@@ -12,6 +12,7 @@ namespace srat {
 struct FragmentInput {
 	// interpolated vertex outputs
 	f32v2x8 uv;
+	f32v3x8 normal;
 
 	// material data pointer, e.g. 'MaterialParameterBlockUnlit'
 	void const * material;

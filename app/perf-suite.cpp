@@ -48,6 +48,7 @@ struct PerfWorkload {
 	std::vector<srat::triangle_depth_t> depths;
 	std::vector<srat::triangle_perspective_w_t> perspectiveW;
 	std::vector<f32v2> uvs;
+	std::vector<f32v3> normals;
 	bool initialised { false };
 };
 
@@ -69,6 +70,7 @@ void ensure_workload(i32v2 const dim)
 	wl.depths.resize(vertCount);
 	wl.perspectiveW.resize(vertCount);
 	wl.uvs.resize(vertCount);
+	wl.normals.resize(vertCount);
 
 	srand(42); // deterministic
 	auto randf = []() -> f32 {
@@ -83,6 +85,11 @@ void ensure_workload(i32v2 const dim)
 		wl.depths[i] = randf();
 		wl.perspectiveW[i] = 0.5f + randf() * 0.5f;
 		wl.uvs[i] = f32v2 { randf(), randf() };
+		wl.normals[i] = f32v3_normalize(f32v3 {
+			randf() * 2.f - 1.f,
+			randf() * 2.f - 1.f,
+			randf() * 2.f - 1.f,
+		});
 	}
 }
 
@@ -173,6 +180,7 @@ void run_perf_vertex(PerfSuiteConfig const & config)
 			.outDepth = srat::slice(outDepth.data(), vertCount),
 			.outPerspectiveW = srat::slice(outPerspW.data(), vertCount),
 			.outUvs = srat::slice(outUv.data(), vertCount),
+			.outNormals = srat::slice<f32v3>(), // not used in shader
 			.attrOffset = 0,
 		});
 	}
@@ -204,6 +212,9 @@ void run_perf_binning(PerfSuiteConfig const & config)
 			),
 			.triangleUvs = srat::slice(
 				wl.uvs.data(), wl.uvs.size()
+			),
+			.triangleNormals = srat::slice(
+				wl.normals.data(), wl.normals.size()
 			),
 		});
 	}
@@ -240,6 +251,9 @@ void run_perf_raster(PerfSuiteConfig const & config)
 			),
 			.triangleUvs = srat::slice(
 				wl.uvs.data(), wl.uvs.size()
+			),
+			.triangleNormals = srat::slice(
+				wl.normals.data(), wl.normals.size()
 			),
 		});
 	}
@@ -319,12 +333,14 @@ struct VertexOutputBuffers {
 	std::vector<srat::triangle_depth_t>         depths;
 	std::vector<srat::triangle_perspective_w_t> perspW;
 	std::vector<f32v2>         uvs;
+	std::vector<f32v3>         normals;
 
 	void resize(u32 count) {
 		positions.resize(count);
 		depths.resize(count);
 		perspW.resize(count);
 		uvs.resize(count);
+		normals.resize(count);
 	}
 };
 
@@ -349,6 +365,7 @@ void bin_vout(
 		.triangleDepths       = srat::slice(vout.depths.data(), triVertCount),
 		.trianglePerspectiveW = srat::slice(vout.perspW.data(), triVertCount),
 		.triangleUvs          = srat::slice(vout.uvs.data(), triVertCount),
+		.triangleNormals      = srat::slice(vout.normals.data(), triVertCount),
 	});
 }
 
@@ -365,6 +382,7 @@ void bin_perf_workload(
 		.triangleDepths       = srat::slice(wl.depths.data(), triVertCount),
 		.trianglePerspectiveW = srat::slice(wl.perspectiveW.data(), triVertCount),
 		.triangleUvs       = srat::slice(wl.uvs.data(), triVertCount),
+		.triangleNormals      = srat::slice(wl.normals.data(), triVertCount),
 	});
 }
 
@@ -395,6 +413,7 @@ void transform_model(
 			.outDepth        = srat::slice(vout.depths.data(), totalVerts),
 			.outPerspectiveW = srat::slice(vout.perspW.data(), totalVerts),
 			.outUvs       = srat::slice(vout.uvs.data(), totalVerts),
+			.outNormals    = srat::slice(vout.normals.data(), totalVerts),
 			.attrOffset      = offset,
 		});
 		offset += di.indexCount;
@@ -428,6 +447,7 @@ PerfResult test_model_vertex(
 				.outDepth        = srat::slice(vout.depths.data(), totalVerts),
 				.outPerspectiveW = srat::slice(vout.perspW.data(), totalVerts),
 				.outUvs       = srat::slice(vout.uvs.data(), totalVerts),
+				.outNormals    = srat::slice(vout.normals.data(), totalVerts),
 				.attrOffset      = offset,
 			});
 			offset += di.indexCount;
@@ -672,6 +692,7 @@ PerfResult test_worstcase_vertex(PerfSuiteStartupConfig const & cfg)
 			.outDepth        = srat::slice(outDepth.data(), vertCount),
 			.outPerspectiveW = srat::slice(outPerspW.data(), vertCount),
 			.outUvs       = srat::slice(outUv.data(), vertCount),
+			.outNormals    = srat::slice<f32v3>(), // not used in shader
 			.attrOffset      = 0,
 		});
 	});

@@ -67,7 +67,7 @@ inline f32v4x8 srat::MaterialFragmentPbrMetallicRoughness::shade(
 		return metallicRoughness.y;
 	}();
 
-	f32v3x8 const normal = [&]() {
+	[[maybe_unused]] f32v3x8 const detailedNormals = [&]() {
 		if (paramBlock.normalTexture.id == 0) {
 			return f32v3x8_zero();
 		}
@@ -77,15 +77,22 @@ inline f32v4x8 srat::MaterialFragmentPbrMetallicRoughness::shade(
 	 	return norRgba.xyz() * f32v3x8_splat(2.0f,2.0f,2.0f) - f32v3x8_splat(1.0f,1.0f,1.0f);
 	}();
 
-	// apply basic pbr shading for now, using roughnses metalic and normal
-	f32v3x8 const lightDir = (
-		f32v3x8_splat(f32v3_normalize(f32v3(0.5f, 1.0f, 0.3f)))
-	);
-	f32v3x8 const lightColor = f32v3x8_splat(1.0f, 1.0f, 1.0f);
+	f32v3x8 const baseNormal = input.normal;
+	[[maybe_unused]] f32v3x8 normal = f32v3x8_normalize(baseNormal + detailedNormals);
 
-	f32x8 nDotL = f32v3x8_dot(normal, f32v3x8(lightDir));
+	return albedo;
 
-	f32v4x8 const diffuse = (albedo * nDotL);
-	f32v3x8 const specular = lightColor * nDotL * metallic;
-	return diffuse + f32v4x8(specular, f32x8_zero());
+	// // apply basic pbr shading for now, using roughnses metalic and normal
+	// // this is really shitty but it's okay for now
+	// f32v3x8 const lightDir = (
+	// 	f32v3x8_splat(f32v3_normalize(f32v3(0.5f, 1.0f, 0.3f)))
+	// );
+	// f32v3x8 const lightColor = f32v3x8_splat(1.0f, 1.0f, 1.0f);
+
+	// f32x8 nDotL = f32v3x8_dot(normal, f32v3x8(lightDir));
+	// f32x8 nDotLClamp = f32x8_clamp(nDotL, f32x8_zero(), f32x8_splat(1.0f));
+
+	// [[maybe_unused]] f32v4x8 const diffuse = (albedo * nDotLClamp) * f32x8_splat(0.5f);
+	// [[maybe_unused]] f32v3x8 const specular = lightColor * nDotLClamp * metallic;
+	// return diffuse + f32v4x8(specular, f32x8_splat(1.0f));
 }

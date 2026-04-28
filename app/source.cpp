@@ -278,7 +278,7 @@ i32 main(i32 const argc, char const * const * argv)
 	SratModel model = (
 		load_gltf_model_from_file(
 			// "assets/third-party/doom3player.glb"
-			"assets/glTF-Sample-Assets/Models/WaterBottle/glTF/WaterBottle.gltf"
+			"assets/glTF-Sample-Assets/Models/SimpleTexture/glTF/SimpleTexture.gltf"
 		)
 	);
 
@@ -351,7 +351,19 @@ i32 main(i32 const argc, char const * const * argv)
 
 		// viewport
 		{
-			UpdateTexture(deviceTexOut, srat::gfx::image_data8(imageColor).ptr());
+			// UpdateTexture(deviceTexOut, srat::gfx::image_data8(imageColor).ptr());
+
+			// temporary hack just reverse X axis of the image
+			Let imgData = srat::gfx::image_data8(imageColor);
+			std::vector<u8> flippedData(imgData.size());
+			for (i32 y = 0; y < kTargetDim.y; ++y) {
+				for (i32 x = 0; x < kTargetDim.x; ++x) {
+					i32 srcIndex = (y * kTargetDim.x + x) * 4;
+					i32 dstIndex = (y * kTargetDim.x + (kTargetDim.x - 1 - x)) * 4;
+					std::memcpy(&flippedData[dstIndex], &imgData[srcIndex], 4);
+				}
+			}
+			UpdateTexture(deviceTexOut, flippedData.data());
 
 			guiDisplayImage(deviceTexOut, "render output");
 		}

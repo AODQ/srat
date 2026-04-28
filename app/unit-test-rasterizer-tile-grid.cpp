@@ -46,6 +46,7 @@ static srat::TileTriangleData make_triangle(
 		.depth	   = srat::array<float,		3> { depth[0], depth[1], depth[2] },
 		.perspectiveW = srat::array<float,		3> { perspW[0], perspW[1], perspW[2] },
 		.uv		   = srat::array<f32v2,		3> { f32v2 { 0.f, 0.f }, { 0.f, 0.f }, { 0.f, 0.f } },
+		.normal	   = srat::array<f32v3,		3> { f32v3 { 0.f, 0.f, 1.f }, { 0.f, 0.f, 1.f }, { 0.f, 0.f, 1.f } },
 	};
 }
 
@@ -183,6 +184,7 @@ TEST_CASE("tile grid [bin preserves triangle data]") {
 		.depth		= { depth[0], depth[1], depth[2] },
 		.perspectiveW = { perspW[0], perspW[1], perspW[2] },
 		.uv			= { f32v2 { 0.f, 0.f }, { 0.f, 0.f }, { 0.f, 0.f } },
+		.normal		= { f32v3 { 0.f, 0.f, 1.f }, { 0.f, 0.f, 1.f }, { 0.f, 0.f, 1.f } },
 	};
 	srat::tile_grid_bin_triangle_bbox(grid, tri);
 
@@ -226,6 +228,7 @@ TEST_CASE("tile grid [triangle spanning 2x1 tiles]") {
 		.depth		= { depth[0], depth[1], depth[2] },
 		.perspectiveW = { perspW[0], perspW[1], perspW[2] },
 		.uv			= { f32v2 { 0.f, 0.f }, { 0.f, 0.f }, { 0.f, 0.f } },
+		.normal		= { f32v3 { 0.f, 0.f, 1.f }, { 0.f, 0.f, 1.f }, { 0.f, 0.f, 1.f } },
 	};
 	srat::tile_grid_bin_triangle_bbox(grid, tri);
 
@@ -253,6 +256,7 @@ TEST_CASE("tile grid [triangle spanning 2x2 tiles]") {
 		.depth		= { depth[0],depth[1],depth[2] },
 		.perspectiveW = { perspW[0],perspW[1],perspW[2] },
 		.uv			= { f32v2 { 0.f, 0.f }, { 0.f, 0.f }, { 0.f, 0.f } },
+		.normal		= { f32v3 { 0.f, 0.f, 1.f }, { 0.f, 0.f, 1.f }, { 0.f, 0.f, 1.f } },
 	};
 	srat::tile_grid_bin_triangle_bbox(grid, tri);
 
@@ -280,6 +284,7 @@ TEST_CASE("tile grid [same triangle index in all spanned tiles]") {
 		.depth		= { depth[0],depth[1],depth[2] },
 		.perspectiveW = { perspW[0],perspW[1],perspW[2] },
 		.uv			= { f32v2 { 0.f, 0.f }, { 0.f, 0.f }, { 0.f, 0.f } },
+		.normal		= { f32v3 { 0.f, 0.f, 1.f }, { 0.f, 0.f, 1.f }, { 0.f, 0.f, 1.f } },
 	};
 	srat::tile_grid_bin_triangle_bbox(grid, tri);
 
@@ -405,6 +410,7 @@ TEST_CASE("tile grid [triangle data survives source going out of scope]") {
 			.depth		= { depth[0],depth[1],depth[2] },
 			.perspectiveW = { perspW[0],perspW[1],perspW[2] },
 			.uv			= { f32v2 { 0.f, 0.f }, { 0.f, 0.f }, { 0.f, 0.f } },
+			.normal		= { f32v3 { 0.f, 0.f, 1.f }, { 0.f, 0.f, 1.f }, { 0.f, 0.f, 1.f } },
 		};
 		srat::tile_grid_bin_triangle_bbox(grid, tri);
 		triIdx = srat::tile_grid_bin(grid, { 0, 0 }).triangleIndices[0];

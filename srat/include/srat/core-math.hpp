@@ -703,6 +703,25 @@ inline f32x8 f32v3x8_dot(f32v3x8 const & a, f32v3x8 const & b) {
 	};
 }
 
+inline f32v3x8 f32v3x8_clamp(f32v3x8 const & v, f32v3x8 const & min, f32v3x8 const & max) {
+	return {
+		f32x8_clamp(v.v[0], min.v[0], max.v[0]),
+		f32x8_clamp(v.v[1], min.v[1], max.v[1]),
+		f32x8_clamp(v.v[2], min.v[2], max.v[2]),
+	};
+}
+
+inline f32v3x8 f32v3x8_normalize(f32v3x8 const & v) {
+	f32x8 const lengthSq = f32v3x8_dot(v, v);
+	SRAT_ASSERT(lengthSq.v[0] > 0.0f);
+	f32x8 const invLength = f32x8_rsqrt(lengthSq);
+	return {
+		v.v[0] * invLength,
+		v.v[1] * invLength,
+		v.v[2] * invLength
+	};
+}
+
 inline f32x8 f32v4x8_dot(f32v4x8 const & a, f32v4x8 const & b) {
 	return {
 		f32x8_fmadd(

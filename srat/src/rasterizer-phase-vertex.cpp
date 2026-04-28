@@ -93,5 +93,8 @@ void srat::rasterizer_phase_vertex(
 		params.outUvs[outAttrIdx + 0] = attr_fetch<f32v2>(va.uv, i0);
 		params.outUvs[outAttrIdx + 1] = attr_fetch<f32v2>(va.uv, i1);
 		params.outUvs[outAttrIdx + 2] = attr_fetch<f32v2>(va.uv, i2);
+		params.outNormals[outAttrIdx + 0] = attr_fetch<f32v3>(va.normal, i0);
+		params.outNormals[outAttrIdx + 1] = attr_fetch<f32v3>(va.normal, i1);
+		params.outNormals[outAttrIdx + 2] = attr_fetch<f32v3>(va.normal, i2);
 	}
 }

@@ -32,6 +32,11 @@ void srat::rasterizer_phase_bin(
 				params.triangleUvs[(triIt*3) + 1],
 				params.triangleUvs[(triIt*3) + 2]
 			},
+			.normal = {
+				params.triangleNormals[(triIt*3) + 0],
+				params.triangleNormals[(triIt*3) + 1],
+				params.triangleNormals[(triIt*3) + 2]
+			},
 			// .color = {
 			// 	params.triangleColors[(triIt*3) + 0],
 			// 	params.triangleColors[(triIt*3) + 1],
