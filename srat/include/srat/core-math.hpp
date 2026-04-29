@@ -146,6 +146,11 @@ struct f32v3 {
 	return a.x*b.x + a.y*b.y + a.z*b.z;
 }
 
+
+inline f32 f32v3_length(f32v3 const v) {
+	return std::sqrtf(v.x*v.x + v.y*v.y + v.z*v.z);
+}
+
 [[nodiscard]] constexpr inline f32v3 f32v3_cross(f32v3 const a, f32v3 const b) {
 	return {
 		a.y*b.z - a.z*b.y,
