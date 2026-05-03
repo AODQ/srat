@@ -340,6 +340,10 @@ struct f32x8 {
 		{ return { _mm256_castps_si256(_mm256_cmp_ps(v, o.v, _CMP_GE_OQ)) }; }
 };
 
+inline f32x8 f32x8_from_i32x8(i32x8 const & v) {
+	return { _mm256_cvtepi32_ps(v.v) };
+}
+
 inline u32x8 u32x8_from_f32x8(f32x8 const & v) {
 	return { _mm256_cvtps_epi32(v.v) };
 }
@@ -492,6 +496,16 @@ inline f32v2x8 f32v2x8_splat(f32v2 const & v) {
 		f32x8_splat(v.y),
 	};
 }
+
+inline f32v2x8 f32v2x8_fract(f32v2x8 const & v) {
+	auto const floorX = _mm256_floor_ps(v.v[0].v);
+	auto const floorY = _mm256_floor_ps(v.v[1].v);
+	return {
+		{ _mm256_sub_ps(v.v[0].v, floorX) },
+		{ _mm256_sub_ps(v.v[1].v, floorY) },
+	};
+}
+
 inline f32v2x8 f32v2x8_splat(f32 const x, f32 const y) {
 	return {
 		f32x8_splat(x),
@@ -697,6 +711,28 @@ inline f32v3x8 f32v3x8_zero() {
 inline f32v4x8 f32v4x8_zero() {
 	static srat::array<f32, 4> zero = { 0.0f, 0.0f, 0.0f, 0.0f };
 	return f32v4x8_splat(zero);
+}
+
+inline f32v4x8 f32v4x8_mix(
+	f32v4x8 const & a, f32v4x8 const & b, f32v4x8 const & t
+) {
+	return {
+		f32x8_fmadd(t.v[0], b.v[0] - a.v[0], a.v[0]),
+		f32x8_fmadd(t.v[1], b.v[1] - a.v[1], a.v[1]),
+		f32x8_fmadd(t.v[2], b.v[2] - a.v[2], a.v[2]),
+		f32x8_fmadd(t.v[3], b.v[3] - a.v[3], a.v[3]),
+	};
+}
+
+inline f32v4x8 f32v4x8_mix(
+	f32v4x8 const & a, f32v4x8 const & b, f32x8 const & t
+) {
+	return {
+		f32x8_fmadd(t, b.v[0] - a.v[0], a.v[0]),
+		f32x8_fmadd(t, b.v[1] - a.v[1], a.v[1]),
+		f32x8_fmadd(t, b.v[2] - a.v[2], a.v[2]),
+		f32x8_fmadd(t, b.v[3] - a.v[3], a.v[3]),
+	};
 }
 
 inline f32x8 f32v3x8_dot(f32v3x8 const & a, f32v3x8 const & b) {
@@ -1130,7 +1166,11 @@ inline u32 as_rgba(f32v4 const & color) {
 		i32x8_clamp(v.y, min.y, max.y),
 	};
 }
-
+[[nodiscard]] inline i32x8 i32x8_floor(f32x8 const & v) {
+	return {
+		_mm256_cvttps_epi32(_mm256_floor_ps(v.v))
+	};
+}
 [[nodiscard]] inline f32x8 f32x8_floor(f32x8 const & v)
 	{ return { _mm256_floor_ps(v.v) }; }
 

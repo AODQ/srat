@@ -46,10 +46,4 @@ f32v4x8 image_sample(
 	f32v2x8 const & uv
 );
 
-// only for reference, slow path
-f32v4 image_reference_sample(
-	Image const & image,
-	f32v2 const & uv
-);
-
 } // namespace srat

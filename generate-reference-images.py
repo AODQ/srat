@@ -14,14 +14,13 @@ bpy.ops.import_scene.gltf(filepath=model_path)
 scene = bpy.context.scene
 scene.render.engine = 'BLENDER_EEVEE'
 
-# make it stable / predictable
-scene.eevee.taa_render_samples = 1
+#scene.eevee.taa_render_samples = 1
+#scene.eevee.use_taa_reprojection = False
 #scene.eevee.use_gtao = False
 #scene.eevee.use_bloom = False
 #scene.eevee.use_ssr = False
 
-# color management (important)
-scene.view_settings.view_transform = 'Standard'
+scene.view_settings.view_transform = 'Raw'
 scene.view_settings.look = 'None'
 scene.view_settings.exposure = 0
 scene.view_settings.gamma = 1
@@ -49,7 +48,7 @@ print("min_v:", min_v)
 print("max_v:", max_v)
 
 center = (min_v + max_v) / 2
-cam_obj.location = center + mathutils.Vector((0, 0, max_v.z * 1.5))
+cam_obj.location = center + mathutils.Vector((max_v.x*1.5, max_v.z*1.5, max_v.z * 1.5))
 direction = center - cam_obj.location
 cam_obj.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
 print("Camera location:", cam_obj.location)
@@ -61,6 +60,10 @@ print("center:", center)
 #light_obj = bpy.data.objects.new("sun", light)
 #scene.collection.objects.link(light_obj)
 #light_obj.rotation_euler = (0.7, 0.5, 0)
+
+# set all images to linear
+for img in bpy.data.images:
+	img.colorspace_settings.name = 'scene_linear'
 
 # sanity remove all lights
 for obj in scene.objects:

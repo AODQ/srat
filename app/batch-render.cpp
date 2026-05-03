@@ -27,7 +27,7 @@ static constexpr i32v2 kBatchDim = { 512, 512 };
 
 // NOLINTBEGIN(*)
 static char const * const kModelNames[] = {
-	"Cube",
+	"TextureCoordinateTest",
 
 	// "ABeautifulGame",
 	// "AlphaBlendModeTest",
@@ -238,9 +238,8 @@ static void destroy_model_materials(SratModel const & model)
 static f32m44 make_orbit_view(SratModel const & model)
 {
 	f32v3 const center = model.center();
-	f32v3 const eye = center + f32v3(0.f, 0.f, model.boundsMax.z * 1.5f);
-	printf("EYE: %f %f %f\n", eye.x, eye.y, eye.z);
-	printf("CTR: %f %f %f\n", center.x, center.y, center.z);
+	f32v3 const eye = center + model.boundsMax * 2.0f;
+	printf("eye: %f %f %f\n", eye.x, eye.y, eye.z);
 	return f32m44_lookat(eye, center, {0.f, 1.f, 0.f});
 }
 
@@ -346,7 +345,7 @@ void batch_render_all_models(
 		}
 
 		// -- clear buffers
-		clear_color(colorImg, 25, 25, 35); // dark navy background
+		clear_color(colorImg, 255, 255, 255);
 		clear_depth(depthImg);
 
 		// -- camera
@@ -382,11 +381,28 @@ void batch_render_all_models(
 		Image rlImg = (
 			GenImageColor(kBatchDim.x, kBatchDim.y, BLACK)
 		);
-		std::memcpy(
-			rlImg.data,
-			srat::gfx::image_data8(colorImg).ptr(),
-			(size_t)kBatchDim.x * kBatchDim.y * 4u
-		);
+		// TODO TEMP
+		// for now the image is flipped due to ndcToSCreen etc
+		// so just flip on X axis
+		u8 * rlData = (u8 *)rlImg.data;
+		u8 * colorData = srat::gfx::image_data8(colorImg).ptr();
+		for (u64 i = 0; i < (u64)kBatchDim.x * kBatchDim.y; ++i) {
+			u64 const idx = i * 4;
+			// FLIP ON X AXIS, so left image goes on right
+			u64 const flippedIdx = (
+				((i / kBatchDim.x) * kBatchDim.x) + (kBatchDim.x - 1 - (i % kBatchDim.x))
+			) * 4;
+
+			rlData[idx + 0] = colorData[flippedIdx + 0];
+			rlData[idx + 1] = colorData[flippedIdx + 1];
+			rlData[idx + 2] = colorData[flippedIdx + 2];
+			rlData[idx + 3] = colorData[flippedIdx + 3];
+		}
+		// std::memcpy(
+		// 	rlImg.data,
+		// 	srat::gfx::image_data8(colorImg).ptr(),
+		// 	(size_t)kBatchDim.x * kBatchDim.y * 4u
+		// );
 		std::string const outPath = (
 			std::string(outputDir) + "/" + name + ".png"
 		);

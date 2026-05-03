@@ -503,7 +503,7 @@ void guiUnitTestImages(
 ) {
 	static GuiState s = {};
 
-	// ── Init / re-init when image data pointer changes ───
+	// -- Init / re-init when image data pointer changes ---
 	bool const needInit = (
 		!s.initialized ||
 		s.lastDataPtr != referenceColor.data
@@ -568,7 +568,7 @@ void guiUnitTestImages(
 		s.initialized = true;
 	}
 
-	// ── ImGui window ─────────────────────────────────────
+	// -- ImGui window -------------------------------------
 	ImGui::SetNextWindowSize(
 		ImVec2(1100.f, 760.f), ImGuiCond_FirstUseEver
 	);
@@ -581,7 +581,7 @@ void guiUnitTestImages(
 		return;
 	}
 
-	// ── Keyboard shortcuts (window must be focused) ──────
+	// -- Keyboard shortcuts (window must be focused) ------
 	if (ImGui::IsWindowFocused(
 		ImGuiFocusedFlags_RootAndChildWindows
 	)) {
@@ -615,7 +615,7 @@ void guiUnitTestImages(
 			s.zoom = nz < 0.1f ? 0.1f : nz;
 		}
 
-		// Cycle diff amplification: 1x → 2x → 4x → 8x → 16x
+		// Cycle diff amplification: 1x -> 2x -> 4x -> 8x -> 16x
 		if (ImGui::IsKeyPressed(ImGuiKey_A)) {
 			static constexpr f32 kAmps[] = {
 				1.f, 2.f, 4.f, 8.f, 16.f
@@ -639,7 +639,7 @@ void guiUnitTestImages(
 		}
 	}
 
-	// ── Select active texture set based on channel ───────
+	// -- Select active texture set based on channel -------
 	bool const isColor = (s.channel == 0);
 
 	Texture2D const & refTex = isColor
@@ -670,7 +670,7 @@ void guiUnitTestImages(
 	);
 
 
-	// ── Toolbar ──────────────────────────────────────────
+	// -- Toolbar ------------------------------------------
 	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.f);
 
 	// View mode buttons
@@ -772,7 +772,7 @@ void guiUnitTestImages(
 
 	ImGui::PopStyleVar();
 
-	// ── Histogram panel (when active) ─────────────────────
+	// -- Histogram panel (when active) ---------------------
 	if (s.showHistogram) {
 		f32 const prevMin = s.histMin;
 		f32 const prevMax = s.histMax;
@@ -809,7 +809,7 @@ void guiUnitTestImages(
 	}
 
 
-	// ── Image area sizing ─────────────────────────────────
+	// -- Image area sizing ---------------------------------
 	// Reserve space for stats bar at the bottom.
 	static constexpr f32 kStatsH = 96.f;
 	f32 const imgH = (
@@ -817,7 +817,7 @@ void guiUnitTestImages(
 	);
 	f32 const imgW = ImGui::GetContentRegionAvail().x;
 
-	// ── Image panels (InvisibleButton + DrawList) ─────────
+	// -- Image panels (InvisibleButton + DrawList) ---------
 	// We reserve rects via InvisibleButton first, then draw
 	// into all of them via the window DrawList.
 	ImDrawList * dl = ImGui::GetWindowDrawList();
@@ -1031,16 +1031,15 @@ void guiUnitTestImages(
 		refPanMax = dMax;
 	}
 
-	// ── Zoom with scroll wheel ────────────────────────────
+	// -- Zoom with scroll wheel ----------------------------
 	if (anyHov) {
 		f32 const wheel = ImGui::GetIO().MouseWheel;
 		if (wheel != 0.f) {
-			f32 const nz = s.zoom * std::pow(1.15f, wheel);
-			s.zoom = nz < 0.1f ? 0.1f : (nz > 64.f ? 64.f : nz);
+			s.zoom *= wheel;
 		}
 	}
 
-	// ── Pan with RMB or MMB ───────────────────────────────
+	// -- Pan with RMB or MMB -------------------------------
 	// Explicitly exclude LMB so slider drag doesn't conflict.
 	bool const rmbDown = ImGui::IsMouseDown(
 		ImGuiMouseButton_Right
@@ -1054,7 +1053,7 @@ void guiUnitTestImages(
 		s.panY += md.y;
 	}
 
-	// ── Pixel inspector tooltip ───────────────────────────
+	// -- Pixel inspector tooltip ---------------------------
 	if (s.showInspector && anyHov) {
 		showInspector(
 			refPanMin, refPanMax,
@@ -1063,7 +1062,7 @@ void guiUnitTestImages(
 		);
 	}
 
-	// ── Stats bar ─────────────────────────────────────────
+	// -- Stats bar -----------------------------------------
 	drawStatsBar(stats, chName);
 
 	ImGui::End();
@@ -1091,7 +1090,7 @@ void guiDisplayImage(
 		return;
 	}
 
-	// ── Reset-view toolbar ────────────────────────────────
+	// -- Reset-view toolbar --------------------------------
 	if (cameraInput) {
 		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.f);
 
@@ -1113,7 +1112,7 @@ void guiDisplayImage(
 		ImGui::Separator();
 	}
 
-	// ── Image panel — fills all remaining space ───────────
+	// -- Image panel — fills all remaining space -----------
 	f32 const panelW = ImGui::GetContentRegionAvail().x;
 	f32 const panelH = ImGui::GetContentRegionAvail().y;
 
@@ -1155,23 +1154,22 @@ void guiDisplayImage(
 	if (cameraInput && (hov || act)) {
 		ImVec2 const md = ImGui::GetIO().MouseDelta;
 
-		// Left drag → orbit (azimuth + elevation)
+		// Left drag -> orbit (azimuth + elevation)
 		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.f)) {
-			cameraInput->orbitDX += md.x;
-			cameraInput->orbitDY += md.y;
+			cameraInput->orbitDX -= md.x*0.25f;
+			cameraInput->orbitDY += md.y*0.25f;
 		}
-		// Middle drag → orbit azimuth only (locked elevation)
+		// Middle drag -> orbit azimuth only (locked elevation)
 		if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle, 0.f)) {
-			cameraInput->orbitXDX += md.x;
+			cameraInput->orbitXDX += md.x*0.25f;
 		}
-		// Right drag → pan
+		// Right drag -> pan
 		if (ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0.f)) {
-			cameraInput->panDX += md.x;
-
-			cameraInput->panDY -= md.y;
+			cameraInput->panDX += md.x*0.25f;
+			cameraInput->panDY += md.y*0.25f;
 		}
-		// Scroll → zoom radius
-		cameraInput->scroll += ImGui::GetIO().MouseWheel;
+		// Scroll -> zoom radius
+		cameraInput->scroll += -ImGui::GetIO().MouseWheel;
 	}
 
 	ImGui::End();

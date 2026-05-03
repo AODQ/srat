@@ -56,6 +56,21 @@ static void image_apply_rgba_channels(
 	}
 }
 
+static f32v4x8 image_sample_nearest(
+	ImplImage const & impl,
+	i32v2x8 const & texelCoord
+) {
+	i32v2 const & dim = impl.dim;
+	// -- convert to indices
+	i32x8 const idx = (texelCoord.y * i32x8_splat(dim.x)) + texelCoord.x;
+	// -- gather texels
+	f32x8 const texR = f32x8_memory_gather(impl.channelR.data(), idx);
+	f32x8 const texG = f32x8_memory_gather(impl.channelG.data(), idx);
+	f32x8 const texB = f32x8_memory_gather(impl.channelB.data(), idx);
+	f32x8 const texA = f32x8_memory_gather(impl.channelA.data(), idx);
+	return f32v4x8 { texR, texG, texB, texA };
+}
+
 // -----------------------------------------------------------------------------
 // -- public api
 // -----------------------------------------------------------------------------
@@ -138,61 +153,46 @@ f32v4x8 srat::gfx::image_sample(
 	Image const & image,
 	f32v2x8 const & uv
 ) {
-	Let impl = sImagePool.get(image);
+	ImplImage const * const impl = sImagePool.get(image);
 	SRAT_ASSERT(impl != nullptr);
-	SRAT_ASSERT(impl->format == ImageFormat::r8g8b8a8_unorm);
-	// only support reasonably sized textures for now
-	SRAT_ASSERT(impl->dim.x > 0 && impl->dim.x <= 4096);
-	SRAT_ASSERT(impl->dim.y > 0 && impl->dim.y <= 4096);
-	i32v2 const & dim = impl->dim;
-	// -- compute texel coord wrapped
-	f32v2x8 const scaledUV = uv * f32v2x8_splat((f32)dim.x, (f32)dim.y);
-	// wrap the scaled UV and flip Y
-	f32v2x8 const wrappedUV = (
-		f32v2x8_modulo(scaledUV, f32v2x8_splat((f32)dim.x, (f32)dim.y))
+	// -- bilinear filter (for now)
+	i32v2 const dim = impl->dim;
+
+	f32v2x8 const uvWrapped = f32v2x8_fract(uv);
+
+	f32v2x8 const uvScaled = (
+		  uvWrapped * f32v2x8_splat((f32)dim.x, (f32)dim.y)
+		- f32v2x8_splat(0.5f, 0.5f)
 	);
-	i32v2x8 const texelCoord = f32v2x8_to_i32v2x8_floor(wrappedUV);
-	// below reference for clamped
-	i32v2x8 const clampedCoord = (
-		i32v2x8_clamp(
-			texelCoord,
-			i32v2x8_splat(0, 0),
-			i32v2x8_splat((i32)dim.x - 1, (i32)dim.y - 1)
+
+	// -- compute texel coordinates
+	i32x8 const texelX0 = (
+		i32x8_clamp(
+			i32x8_floor(uvScaled.v[0]),
+			i32x8_splat(0),
+			i32x8_splat(dim.x - 2)
 		)
 	);
-	// -- convert to indices
-	i32x8 const idx = (clampedCoord.y * i32x8_splat(dim.x)) + clampedCoord.x;
-	// -- gather texels
-	f32x8 const texR = f32x8_memory_gather(impl->channelR.data(), idx);
-	f32x8 const texG = f32x8_memory_gather(impl->channelG.data(), idx);
-	f32x8 const texB = f32x8_memory_gather(impl->channelB.data(), idx);
-	f32x8 const texA = f32x8_memory_gather(impl->channelA.data(), idx);
-	return f32v4x8 { texR, texG, texB, texA };
-}
+	i32x8 const texelY0 = (
+		i32x8_clamp(
+			i32x8_floor(uvScaled.v[1]),
+			i32x8_splat(0),
+			i32x8_splat(dim.y - 2)
+		)
+	);
+	i32x8 const texelX1 = texelX0 + i32x8_splat(1);
+	i32x8 const texelY1 = texelY0 + i32x8_splat(1);
 
-f32v4 srat::gfx::image_reference_sample(
-	Image const & image,
-	f32v2 const & uv
-) {
-	Let impl = sImagePool.get(image);
-	SRAT_ASSERT(impl != nullptr);
-	SRAT_ASSERT(impl->format == ImageFormat::r8g8b8a8_unorm);
-	i32v2 const & dim = impl->dim;
-	// -- compute texel coord clamped
-	f32v2 const scaledUV = uv * f32v2((f32)dim.x, (f32)dim.y);
-	i32v2 const texelCoord = i32v2(
-		(int)scaledUV.x,
-		(int)scaledUV.y
-	);
-	i32v2 const clampedCoord = i32v2(
-		i32_clamp(texelCoord.x, 0, (int)dim.x - 1),
-		i32_clamp(texelCoord.y, 0, (int)dim.y - 1)
-	);
-	u64 const idx = (u64)(clampedCoord.y * dim.x + clampedCoord.x);
-	return {
-		impl->channelR[idx],
-		impl->channelG[idx],
-		impl->channelB[idx],
-		impl->channelA[idx]
- };
+	// -- fetch texels
+	f32v4x8 const c00 = image_sample_nearest(*impl, i32v2x8 {texelX0, texelY0});
+	f32v4x8 const c10 = image_sample_nearest(*impl, i32v2x8 {texelX1, texelY0});
+	f32v4x8 const c01 = image_sample_nearest(*impl, i32v2x8 {texelX0, texelY1});
+	f32v4x8 const c11 = image_sample_nearest(*impl, i32v2x8 {texelX1, texelY1});
+
+	// -- interpolate
+	f32x8 const dx = uvScaled.v[0] - f32x8_from_i32x8(texelX0);
+	f32x8 const dy = uvScaled.v[1] - f32x8_from_i32x8(texelY0);
+	f32v4x8 const c0 = f32v4x8_mix(c00, c10, dx);
+	f32v4x8 const c1 = f32v4x8_mix(c01, c11, dx);
+	return f32v4x8_mix(c0, c1, dy);
 }

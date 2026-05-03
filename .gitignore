@@ -1,4 +1,5 @@
 build/
+image-output/
 .cache/
 cmakecache.txt
 cmakefiles/

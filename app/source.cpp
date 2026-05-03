@@ -311,11 +311,14 @@ i32 main(i32 const argc, char const * const * argv)
 	srat::gfx::Device const device = srat::gfx::device_create({});
 
 	// debug uses a cheap model
-	#define MODEL "Cube"
+	
+	std::string const modelBase = argc > 1 ? argv[1] : "Box";
 	SratModel model = (
 		load_gltf_model_from_file(
-			"assets/glTF-Sample-Assets/Models/"
-			MODEL "/glTF/" MODEL ".gltf"
+			std::string(
+				"assets/glTF-Sample-Assets/Models/"
+				+ modelBase + "/glTF/" + modelBase + ".gltf"
+			).c_str()
 		)
 	);
 

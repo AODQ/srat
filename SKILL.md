@@ -208,3 +208,4 @@ set), the result is b (the second arg), not a. This is because
 _mm256_blendv_ps blends from the second source when the control bit
 is 1.
 
+DO NOT USE UNICODE.
