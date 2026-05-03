@@ -381,28 +381,11 @@ void batch_render_all_models(
 		Image rlImg = (
 			GenImageColor(kBatchDim.x, kBatchDim.y, BLACK)
 		);
-		// TODO TEMP
-		// for now the image is flipped due to ndcToSCreen etc
-		// so just flip on X axis
-		u8 * rlData = (u8 *)rlImg.data;
-		u8 * colorData = srat::gfx::image_data8(colorImg).ptr();
-		for (u64 i = 0; i < (u64)kBatchDim.x * kBatchDim.y; ++i) {
-			u64 const idx = i * 4;
-			// FLIP ON X AXIS, so left image goes on right
-			u64 const flippedIdx = (
-				((i / kBatchDim.x) * kBatchDim.x) + (kBatchDim.x - 1 - (i % kBatchDim.x))
-			) * 4;
-
-			rlData[idx + 0] = colorData[flippedIdx + 0];
-			rlData[idx + 1] = colorData[flippedIdx + 1];
-			rlData[idx + 2] = colorData[flippedIdx + 2];
-			rlData[idx + 3] = colorData[flippedIdx + 3];
-		}
-		// std::memcpy(
-		// 	rlImg.data,
-		// 	srat::gfx::image_data8(colorImg).ptr(),
-		// 	(size_t)kBatchDim.x * kBatchDim.y * 4u
-		// );
+		std::memcpy(
+			rlImg.data,
+			srat::gfx::image_data8(colorImg).ptr(),
+			(size_t)kBatchDim.x * kBatchDim.y * 4u
+		);
 		std::string const outPath = (
 			std::string(outputDir) + "/" + name + ".png"
 		);

@@ -264,7 +264,10 @@ static void drawTexInRect(
 	dl->AddImage(
 		(ImTextureID)(uintptr_t)tex.id,
 		ImVec2(ix, iy),
-		ImVec2(ix + tw, iy + th)
+		ImVec2(ix + tw, iy + th),
+		// flip
+		/*uv_min=*/ ImVec2(0.0f, 1.0f),
+		/*uv_max=*/ ImVec2(1.0f, 0.0f)
 	);
 	dl->PopClipRect();
 }
@@ -1144,7 +1147,9 @@ void guiDisplayImage(
 		dl->AddImage(
 			(ImTextureID)(uintptr_t)img.id,
 			ImVec2(offX, offY),
-			ImVec2(offX + drawW, offY + drawH)
+			ImVec2(offX + drawW, offY + drawH),
+			ImVec2(0.f, 1.f),
+			ImVec2(1.f, 0.f)
 		);
 	}
 
@@ -1156,8 +1161,8 @@ void guiDisplayImage(
 
 		// Left drag -> orbit (azimuth + elevation)
 		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.f)) {
-			cameraInput->orbitDX -= md.x*0.25f;
-			cameraInput->orbitDY += md.y*0.25f;
+			cameraInput->orbitDX += md.x*0.25f;
+			cameraInput->orbitDY -= md.y*0.25f;
 		}
 		// Middle drag -> orbit azimuth only (locked elevation)
 		if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle, 0.f)) {
@@ -1165,8 +1170,8 @@ void guiDisplayImage(
 		}
 		// Right drag -> pan
 		if (ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0.f)) {
-			cameraInput->panDX += md.x*0.25f;
-			cameraInput->panDY += md.y*0.25f;
+			cameraInput->panDX -= md.x*0.25f;
+			cameraInput->panDY -= md.y*0.25f;
 		}
 		// Scroll -> zoom radius
 		cameraInput->scroll += -ImGui::GetIO().MouseWheel;
