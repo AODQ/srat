@@ -387,7 +387,6 @@ i32 main(i32 const argc, char const * const * argv)
 		// viewport
 		{
 			UpdateTexture(deviceTexOut, srat::gfx::image_data8(imageColor).ptr());
-
 			guiDisplayImage(deviceTexOut, "render output", &sCameraInput);
 		}
 
